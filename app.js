@@ -1,11 +1,28 @@
 const express = require('express')
 const app = express()
-const port = 3000
+require("dotenv").config();
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
+//Importing the DB
+const connectDB = require("./config/db");
+// Connect to MongoDB
+connectDB();
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
+// API can accept JSON requests
+app.use(express.json())
+
+//importing auth route
+const authRoutes = require("./routes/authRoutes")
+
+// Mounting the Route
+app.use('/api/auth', authRoutes)
+
+// app.get('/', (req, res) => {
+//   res.send('Hello World!')
+// })
+
+// Port from .env (fallback included)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Example app listening on port ${PORT}`)
 })
