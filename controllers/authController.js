@@ -1,10 +1,11 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 // Sign Up
 exports.signup = async (req, res) => {
   try {
-    const { email, password, image } = req.body;
+    const { fullName, email, password, image } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -20,6 +21,7 @@ exports.signup = async (req, res) => {
 
     // Create user
     const user = await User.create({
+      fullName,
       email,
       password: hashedPassword,
       image,
@@ -29,6 +31,7 @@ exports.signup = async (req, res) => {
       message: "User registered successfully",
       user: {
         id: user._id,
+        fullName: user.fullName,
         email: user.email,
         image: user.image,
       },
@@ -41,7 +44,7 @@ exports.signup = async (req, res) => {
   }
 };
 
-// Login 
+// Login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -69,10 +72,17 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Generate JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
     res.status(200).json({
       message: "Login successful",
+      token: token,
       user: {
         id: user._id,
+        fullName: user.fullName,
         email: user.email,
         image: user.image,
       },
@@ -94,4 +104,15 @@ exports.getAllUsers = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
+};
+
+// Get logged-in user
+exports.getMe = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({
+      message: "Not authorized",
+    });
+  }
+
+  res.status(200).json(req.user);
 };
