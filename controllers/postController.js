@@ -61,3 +61,40 @@ exports.getAllPosts = async (req, res) => {
     });
   }
 };
+
+// Get single post by ID
+exports.getPostById = async (req, res) => {
+  try {
+    // the 'id' is taken from url "http://127.0.0.1:3000/api/posts/id"
+    const { id } = req.params;
+
+    // getting the post using id and also finding it's author's full name and image
+    const post = await Post.findOne({
+      _id: id,
+      published: true,
+    }).populate("author", "fullName image");
+
+    // showing this error when post not found
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // sending the post(in the form of json) as response
+    res.status(200).json(post);
+  } catch (error) {
+    console.error(error);
+
+    // Handle invalid ObjectId
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid post ID",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
