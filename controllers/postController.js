@@ -98,3 +98,47 @@ exports.getPostById = async (req, res) => {
     });
   }
 };
+
+// Get posts by user ID
+exports.getPostsByUserId = async (req, res) => {
+  try {
+    // taking 'userId' from url 'http://127.0.0.1:3000/api/posts/user/:userId'
+    const { userId } = req.params;
+    
+    // Getting all the post by 'userId'
+    const posts = await Post.find({
+      author: userId,
+      published: true,
+    })
+      .populate("author", "fullName image")
+      .sort({ createdAt: -1 });
+
+    // If user does not post anything yet
+    if (posts.length === 0) {
+      return res.status(200).json({
+        message: "No posts found for this user",
+        posts: [],
+      });
+    }
+
+    // Sending the response
+    res.status(200).json({
+      count: posts.length,
+      posts,
+    });
+  } catch (error) {
+    console.error(error);
+
+    // If for some reason 'userId' is wrong in url parameter
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    // for any internal server error
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
