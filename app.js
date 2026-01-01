@@ -1,5 +1,6 @@
 const express = require("express");
 const app = express();
+const cors = require("cors");
 require("dotenv").config();
 
 //Importing the DB
@@ -9,6 +10,8 @@ connectDB();
 
 // API can accept JSON requests
 app.use(express.json());
+// Enable CORS for all routes
+app.use(cors());
 
 //importing auth route
 const authRoutes = require("./routes/authRoutes");
