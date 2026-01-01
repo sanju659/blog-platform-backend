@@ -213,3 +213,48 @@ exports.updatePost = async (req, res) => {
     });
   }
 };
+
+// Delete post (author only)
+exports.deletePost = async (req, res) => {
+  try {
+    // The post id has came from url http://127.0.0.1:3000/api/posts/delete/<POST_ID>
+    const { id } = req.params;
+
+    // Find post in database
+    const post = await Post.findById(id);
+
+    // Post not found
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // Ownership check
+    if (post.author.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        message: "You are not allowed to delete this post",
+      });
+    }
+
+    // Delete post
+    await post.deleteOne();
+
+    res.status(200).json({
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    // Invalid ObjectId
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid post ID",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
