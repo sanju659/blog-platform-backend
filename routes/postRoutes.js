@@ -3,7 +3,8 @@ const {
   createPost,
   getAllPosts,
   getPostById,
-  getPostsByUserId
+  getPostsByUserId,
+  updatePost
 } = require("./../controllers/postController");
 
 const protect = require("../middlewares/auth_middle_ware");
@@ -18,5 +19,7 @@ router.get("/allposts", getAllPosts);
 router.get("/:id", getPostById);
 // Get posts by user ID
 router.get("/user/:userId", getPostsByUserId);
+// Update post (author only, protected)
+router.put("/update/:id", protect, updatePost);
 
 module.exports = router;

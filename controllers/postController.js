@@ -104,7 +104,7 @@ exports.getPostsByUserId = async (req, res) => {
   try {
     // taking 'userId' from url 'http://127.0.0.1:3000/api/posts/user/:userId'
     const { userId } = req.params;
-    
+
     // Getting all the post by 'userId'
     const posts = await Post.find({
       author: userId,
@@ -137,6 +137,73 @@ exports.getPostsByUserId = async (req, res) => {
     }
 
     // for any internal server error
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+// Update post (author only)
+exports.updatePost = async (req, res) => {
+  try {
+    // getting the post id from url 'http://127.0.0.1:3000/api/posts/update/<POST_ID>'
+    const { id } = req.params;
+
+    const { title, content, excerpt, image, category, published } = req.body;
+
+    // Find the post using post id
+    const post = await Post.findById(id);
+
+    // If post not found
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // Ownership check
+    // req.user coming from 'auth_middle_ware.js as we are using "protect"'
+    if (post.author.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        message: "You are not allowed to update this post",
+      });
+    }
+
+    // Update fields only if provided
+    if (title) post.title = title;
+    if (content) post.content = content;
+    if (excerpt) post.excerpt = excerpt;
+    if (image) post.image = image;
+    if (category) post.category = category;
+
+    // Handle publish logic
+    if (published !== undefined) {
+      post.published = published;
+
+      if (published === true && !post.publishedAt) {
+        // Always update publishedAt when publishing (even if re-publishing)
+        post.publishedAt = new Date();
+      } else {
+        // Clear date when unpublishing
+        post.publishedAt = null;
+      }
+    }
+
+    const updatedPost = await post.save();
+
+    res.status(200).json({
+      message: "Post updated successfully",
+      updatedPost,
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid post ID",
+      });
+    }
+
     res.status(500).json({
       message: "Server error",
     });
