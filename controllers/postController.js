@@ -178,17 +178,21 @@ exports.updatePost = async (req, res) => {
 
     // Handle publish logic
     if (published !== undefined) {
-      post.published = published;
-
+      // Draft --> Published
       if (published === true && !post.publishedAt) {
-        // Always update publishedAt when publishing (even if re-publishing)
         post.publishedAt = new Date();
-      } else {
-        // Clear date when unpublishing
+      }
+
+      // Published --> Draft
+      if (published === false) {
         post.publishedAt = null;
       }
+
+      // updating the status of 'published' in database
+      post.published = published;
     }
 
+    // Saving the whole post in Data Base
     const updatedPost = await post.save();
 
     res.status(200).json({
