@@ -3,7 +3,7 @@ const {
   createPost,
   getAllPosts,
   getPostById,
-  getPostsByUserId,
+  getMyPosts,
   updatePost,
   deletePost
 } = require("./../controllers/postController");
@@ -16,10 +16,10 @@ const router = express.Router();
 router.post("/create", protect, createPost);
 // Get all published posts (public)
 router.get("/allposts", getAllPosts);
+// Get posts by the user
+router.get("/my-posts", protect, getMyPosts);
 // Get single post by ID (public)
 router.get("/:id", getPostById);
-// Get posts by user ID
-router.get("/user/:userId", getPostsByUserId);
 // Update post (author only, protected)
 router.put("/update/:id", protect, updatePost);
 // Delete post (author only)
