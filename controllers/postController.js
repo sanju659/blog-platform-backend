@@ -65,28 +65,38 @@ exports.getAllPosts = async (req, res) => {
 // Get single post by ID
 exports.getPostById = async (req, res) => {
   try {
-    // the 'id' is taken from url "http://127.0.0.1:3000/api/posts/id"
     const { id } = req.params;
 
-    // getting the post using id and also finding it's author's full name and image
-    const post = await Post.findOne({
-      _id: id,
-      published: true,
-    }).populate("author", "fullName image");
+    // Find post (published OR draft if user is author)
+    const post = await Post.findById(id).populate("author", "fullName image");
 
-    // showing this error when post not found
     if (!post) {
       return res.status(404).json({
         message: "Post not found",
       });
     }
 
-    // sending the post(in the form of json) as response
+    // If post is a draft, only allow author to view it
+    if (!post.published) {
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(403).json({
+          message: "This post is not published",
+        });
+      }
+
+      // Check if user is the author
+      if (post.author._id.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "This post is not published",
+        });
+      }
+    }
+
     res.status(200).json(post);
   } catch (error) {
     console.error(error);
 
-    // Handle invalid ObjectId
     if (error.name === "CastError") {
       return res.status(400).json({
         message: "Invalid post ID",

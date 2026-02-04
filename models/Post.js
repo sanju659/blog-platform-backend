@@ -23,6 +23,7 @@ const postSchema = new mongoose.Schema(
     // Content image
     image: {
       type: String, // image URL for now
+      default: "https://via.placeholder.com/800x400?text=No+Image",
     },
 
     // Creator of the post(From User Collection)
@@ -36,6 +37,14 @@ const postSchema = new mongoose.Schema(
     category: {
       type: String,
       trim: true,
+      enum: [
+        "Technology",
+        "Nature",
+        "Travel",
+        "Lifestyle",
+        "Programming",
+        "Personal",
+      ],
     },
 
     // It is published or Draft
@@ -59,5 +68,9 @@ const postSchema = new mongoose.Schema(
     timestamps: true, // adds createdAt & updatedAt
   }
 );
+
+// Indexes
+postSchema.index({ published: 1, createdAt: -1 });
+postSchema.index({ author: 1 });
 
 module.exports = mongoose.model("Post", postSchema);

@@ -9,6 +9,7 @@ const {
 } = require("./../controllers/postController");
 
 const protect = require("../middlewares/auth_middle_ware");
+const optionalAuth = require("../middlewares/optional_auth");
 
 const router = express.Router();
 
@@ -18,8 +19,8 @@ router.post("/create", protect, createPost);
 router.get("/allposts", getAllPosts);
 // Get posts by the user
 router.get("/my-posts", protect, getMyPosts);
-// Get single post by ID (public)
-router.get("/:id", getPostById);
+// Get single post by ID (optional auth)
+router.get("/:id", optionalAuth, getPostById);
 // Update post (author only, protected)
 router.put("/update/:id", protect, updatePost);
 // Delete post (author only)
