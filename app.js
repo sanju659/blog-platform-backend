@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const path = require("path"); 
 require("dotenv").config();
 
 //Importing the DB
@@ -12,6 +13,9 @@ connectDB();
 app.use(express.json());
 // Enable CORS for all routes
 app.use(cors());
+
+// Serve uploaded images as static files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 //importing auth route
 const authRoutes = require("./routes/authRoutes");

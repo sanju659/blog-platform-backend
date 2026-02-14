@@ -1,9 +1,11 @@
 const Post = require("./../models/Post");
+const fs = require("fs");
+const path = require("path");
 
 // Create a new post
 exports.createPost = async (req, res) => {
   try {
-    const { title, content, excerpt, image, category, published } = req.body;
+    const { title, content, excerpt, category, published } = req.body;
 
     // Basic validation
     if (!title || !content) {
@@ -12,19 +14,23 @@ exports.createPost = async (req, res) => {
       });
     }
 
-    // storing  the data in postData
+    // Get image path from uploaded file (if exists)
+    const imagePath = req.file
+      ? `http://127.0.0.1:3000/uploads/${req.file.filename}`
+      : null;
+
     const postData = {
       title,
       content,
       excerpt,
-      image,
+      image: imagePath, // Use uploaded image path
       category,
-      published: published || false,
-      author: req.user._id, // comes from JWT
+      published: published === "true" || published === true, // Handle string/boolean from FormData
+      author: req.user._id,
     };
 
-    // If published, (Stroring the publish date)
-    if (published === true) {
+    // If published, store the publish date
+    if (postData.published === true) {
       postData.publishedAt = new Date();
     }
 
@@ -67,7 +73,6 @@ exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find post (published OR draft if user is author)
     const post = await Post.findById(id).populate("author", "fullName image");
 
     if (!post) {
@@ -78,14 +83,12 @@ exports.getPostById = async (req, res) => {
 
     // If post is a draft, only allow author to view it
     if (!post.published) {
-      // Check if user is authenticated
       if (!req.user) {
         return res.status(403).json({
           message: "This post is not published",
         });
       }
 
-      // Check if user is the author
       if (post.author._id.toString() !== req.user._id.toString()) {
         return res.status(403).json({
           message: "This post is not published",
@@ -112,8 +115,9 @@ exports.getPostById = async (req, res) => {
 // Get posts by the user
 exports.getMyPosts = async (req, res) => {
   try {
-    const posts = await Post.find({ author: req.user._id })
-      .sort({ createdAt: -1 });
+    const posts = await Post.find({ author: req.user._id }).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({
       count: posts.length,
@@ -124,19 +128,14 @@ exports.getMyPosts = async (req, res) => {
   }
 };
 
-
 // Update post (author only)
 exports.updatePost = async (req, res) => {
   try {
-    // getting the post id from url 'http://127.0.0.1:3000/api/posts/update/<POST_ID>'
     const { id } = req.params;
+    const { title, content, excerpt, category, published } = req.body;
 
-    const { title, content, excerpt, image, category, published } = req.body;
-
-    // Find the post using post id
     const post = await Post.findById(id);
 
-    // If post not found
     if (!post) {
       return res.status(404).json({
         message: "Post not found",
@@ -144,7 +143,6 @@ exports.updatePost = async (req, res) => {
     }
 
     // Ownership check
-    // req.user coming from 'auth_middle_ware.js as we are using "protect"'
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         message: "You are not allowed to update this post",
@@ -155,23 +153,44 @@ exports.updatePost = async (req, res) => {
     if (title) post.title = title;
     if (content) post.content = content;
     if (excerpt) post.excerpt = excerpt;
-    if (image) post.image = image;
     if (category) post.category = category;
+
+    // Handle image upload(This block runs only when replacing the image.)
+    if (req.file) {
+      // Delete old image if it exists and is stored locally
+      if (post.image && post.image.includes("uploads/")) {
+        const oldImagePath = path.join(
+          __dirname,
+          "..",
+          post.image.replace("http://127.0.0.1:3000/", ""),
+        );
+        // Check file exists before deleting
+        if (fs.existsSync(oldImagePath)) {
+          //Delete the old file
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+
+      // Set new image(Save new image URL)
+      post.image = `http://127.0.0.1:3000/uploads/${req.file.filename}`;
+    }
 
     // Handle publish logic
     if (published !== undefined) {
+      const isPublished = published === "true" || published === true;
+
       // Draft --> Published
-      if (published === true && !post.publishedAt) {
+      if (isPublished && !post.publishedAt) {
         post.publishedAt = new Date();
       }
 
       // Published --> Draft
-      if (published === false) {
+      if (!isPublished) {
         post.publishedAt = null;
       }
 
       // updating the status of 'published' in database
-      post.published = published;
+      post.published = isPublished;
     }
 
     // Saving the whole post in Data Base
@@ -199,13 +218,10 @@ exports.updatePost = async (req, res) => {
 // Delete post (author only)
 exports.deletePost = async (req, res) => {
   try {
-    // The post id has came from url http://127.0.0.1:3000/api/posts/delete/<POST_ID>
     const { id } = req.params;
 
-    // Find post in database
     const post = await Post.findById(id);
 
-    // Post not found
     if (!post) {
       return res.status(404).json({
         message: "Post not found",
@@ -219,7 +235,18 @@ exports.deletePost = async (req, res) => {
       });
     }
 
-    // Delete post
+    // Delete image file if it exists and is stored locally
+    if (post.image && post.image.includes("uploads/")) {
+      const imagePath = path.join(
+        __dirname,
+        "..",
+        post.image.replace("http://127.0.0.1:3000/", ""),
+      );
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
     await post.deleteOne();
 
     res.status(200).json({
@@ -228,7 +255,6 @@ exports.deletePost = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    // Invalid ObjectId
     if (error.name === "CastError") {
       return res.status(400).json({
         message: "Invalid post ID",
