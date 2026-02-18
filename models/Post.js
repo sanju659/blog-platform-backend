@@ -63,6 +63,32 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    // Soft delete flag
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Who deleted it (admin)
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // When it was deleted
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Reason for deletion (spam, abuse, illegal, etc.)
+    deletionReason: {
+      type: String,
+      enum: ["spam", "abuse", "illegal", "violation", "other"],
+      default: null,
+    },
   },
   {
     timestamps: true, // adds createdAt & updatedAt
@@ -72,5 +98,6 @@ const postSchema = new mongoose.Schema(
 // Indexes
 postSchema.index({ published: 1, createdAt: -1 });
 postSchema.index({ author: 1 });
+postSchema.index({ isDeleted: 1 });
 
 module.exports = mongoose.model("Post", postSchema);
