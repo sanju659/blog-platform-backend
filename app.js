@@ -21,10 +21,13 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const authRoutes = require("./routes/authRoutes");
 // importing post route
 const postRoutes = require("./routes/postRoutes");
+// importing admin route
+const adminRoutes = require("./routes/adminRoutes");
 
 // Mounting the Route
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/admin", adminRoutes);
 
 // app.get('/', (req, res) => {
 //   res.send('Hello World!')
