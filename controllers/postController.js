@@ -42,7 +42,7 @@ exports.createPost = async (req, res) => {
       userpost,
     });
   } catch (error) {
-    console.error(error);
+    // console.error(error);
     res.status(500).json({
       message: "Server error",
     });
@@ -52,16 +52,19 @@ exports.createPost = async (req, res) => {
 // Get all published posts
 exports.getAllPosts = async (req, res) => {
   try {
-    const posts = await Post.find({ published: true }) // filter and take only the published post not the draft one
-      .populate("author", "fullName image") // find the user from User collection and get his/her full name and image
-      .sort({ createdAt: -1 }); // Newest post first
+    const posts = await Post.find({
+      published: true,
+      isDeleted: false, // Only show non-deleted posts
+    })
+      .populate("author", "fullName image")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       count: posts.length, // total number of posts
       posts, // the post itself is sent as json
     });
   } catch (error) {
-    console.error(error);
+    // console.error(error);
     res.status(500).json({
       message: "Server error",
     });
@@ -73,7 +76,10 @@ exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findById(id).populate("author", "fullName image");
+    const post = await Post.findOne({
+      _id: id,
+      isDeleted: false // Only show non-deleted posts
+    }).populate("author", "fullName image");
 
     if (!post) {
       return res.status(404).json({
@@ -89,6 +95,7 @@ exports.getPostById = async (req, res) => {
         });
       }
 
+      // Who created the post vs Who is making the request right now
       if (post.author._id.toString() !== req.user._id.toString()) {
         return res.status(403).json({
           message: "This post is not published",
@@ -98,7 +105,7 @@ exports.getPostById = async (req, res) => {
 
     res.status(200).json(post);
   } catch (error) {
-    console.error(error);
+    // console.error(error);
 
     if (error.name === "CastError") {
       return res.status(400).json({
@@ -115,7 +122,10 @@ exports.getPostById = async (req, res) => {
 // Get posts by the user
 exports.getMyPosts = async (req, res) => {
   try {
-    const posts = await Post.find({ author: req.user._id }).sort({
+    const posts = await Post.find({ 
+      author: req.user._id,
+      isDeleted: false // Only show non-deleted posts
+    }).sort({
       createdAt: -1,
     });
 
@@ -134,7 +144,10 @@ exports.updatePost = async (req, res) => {
     const { id } = req.params;
     const { title, content, excerpt, category, published } = req.body;
 
-    const post = await Post.findById(id);
+    const post = await Post.findOne({
+      _id: id,
+      isDeleted: false // Cannot update deleted posts
+    });
 
     if (!post) {
       return res.status(404).json({
@@ -201,7 +214,7 @@ exports.updatePost = async (req, res) => {
       updatedPost,
     });
   } catch (error) {
-    console.error(error);
+    // console.error(error);
 
     if (error.name === "CastError") {
       return res.status(400).json({
@@ -220,7 +233,10 @@ exports.deletePost = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findById(id);
+    const post = await Post.findOne({
+      _id: id,
+      isDeleted: false // Cannot delete already deleted posts
+    });
 
     if (!post) {
       return res.status(404).json({
@@ -253,7 +269,7 @@ exports.deletePost = async (req, res) => {
       message: "Post deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    // console.error(error);
 
     if (error.name === "CastError") {
       return res.status(400).json({
