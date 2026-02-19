@@ -28,6 +28,28 @@ const protect = async (req, res, next) => {
       // Attach user to request(feching data except password)
       req.user = await User.findById(decoded.id).select("-password");
 
+      // Check if user exists
+      if (!req.user) {
+        return res.status(401).json({
+          message: "User not found",
+        });
+      }
+
+      // Check if user is suspended or banned
+      if (req.user.status === "suspended") {
+        return res.status(403).json({
+          message: "Your account has been suspended",
+          reason: req.user.statusReason || "No reason provided",
+        });
+      }
+
+      if (req.user.status === "banned") {
+        return res.status(403).json({
+          message: "Your account has been banned",
+          reason: req.user.statusReason || "No reason provided",
+        });
+      }
+
       next();
     } catch (error) {
       return res.status(401).json({
