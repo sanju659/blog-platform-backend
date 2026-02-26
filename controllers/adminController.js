@@ -280,30 +280,27 @@ exports.updateUserStatus = async (req, res) => {
 exports.getDashboardStats = async (req, res) => {
   try {
     // Total users (excluding current admin)
-    const totalUsers = await User.countDocuments({
-      _id: { $ne: req.user._id },
-    });
-    const activeUsers = await User.countDocuments({
+    const totalUsers = await User.countDocuments({ _id: { $ne: req.user._id } });
+    const activeUsers = await User.countDocuments({ 
       status: "active",
-      _id: { $ne: req.user._id },
+      _id: { $ne: req.user._id }
     });
-    const suspendedUsers = await User.countDocuments({
+    const suspendedUsers = await User.countDocuments({ 
       status: "suspended",
-      _id: { $ne: req.user._id },
+      _id: { $ne: req.user._id }
     });
-    const bannedUsers = await User.countDocuments({
+    const bannedUsers = await User.countDocuments({ 
       status: "banned",
-      _id: { $ne: req.user._id },
+      _id: { $ne: req.user._id }
     });
 
-    // Total posts
-    const totalPosts = await Post.countDocuments({ isDeleted: false });
+    // Total posts (only published and deleted - no drafts)
+    const totalPosts = await Post.countDocuments({ 
+      published: true,
+      isDeleted: false 
+    });
     const publishedPosts = await Post.countDocuments({
       published: true,
-      isDeleted: false,
-    });
-    const draftPosts = await Post.countDocuments({
-      published: false,
       isDeleted: false,
     });
     const deletedPosts = await Post.countDocuments({ isDeleted: true });
@@ -314,7 +311,10 @@ exports.getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
-    const recentPosts = await Post.find({ isDeleted: false })
+    const recentPosts = await Post.find({ 
+      published: true,  // Only published posts
+      isDeleted: false 
+    })
       .populate("author", "fullName email")
       .sort({ createdAt: -1 })
       .limit(5);
@@ -335,7 +335,6 @@ exports.getDashboardStats = async (req, res) => {
       posts: {
         total: totalPosts,
         published: publishedPosts,
-        drafts: draftPosts,
         deleted: deletedPosts,
       },
       recentActivity: {
