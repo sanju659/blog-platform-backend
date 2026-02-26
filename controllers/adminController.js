@@ -4,21 +4,19 @@ const Post = require("../models/Post");
 // Get all users
 exports.getAllUsersAdmin = async (req, res) => {
   try {
-    // Read query parameters from request
     const { status, role, search } = req.query;
 
-    // Create a filter object (Which is empty)
-    let filter = {};
+    // Build filter - Exclude current admin
+    let filter = {
+      _id: { $ne: req.user._id }  // Exclude the current admin
+    };
 
-    // If admin passes a valid status, only users with that status are fetched.
+    // Filter by status
     if (status && ["active", "suspended", "banned"].includes(status)) {
       filter.status = status;
     }
 
     // Filter by role
-    // Admin can filter:
-      //--> only normal users
-      //--> only admins 
     if (role && ["user", "admin"].includes(role)) {
       filter.role = role;
     }
@@ -31,7 +29,6 @@ exports.getAllUsersAdmin = async (req, res) => {
       ];
     }
 
-    // Fetch users from database
     const users = await User.find(filter)
       .select("-password")
       .sort({ createdAt: -1 });
