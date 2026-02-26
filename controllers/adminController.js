@@ -8,7 +8,7 @@ exports.getAllUsersAdmin = async (req, res) => {
 
     // Build filter - Exclude current admin
     let filter = {
-      _id: { $ne: req.user._id }  // Exclude the current admin
+      _id: { $ne: req.user._id }, // Exclude the current admin
     };
 
     // Filter by status
@@ -191,7 +191,7 @@ exports.restorePost = async (req, res) => {
 
     const restoredPost = await Post.findById(id).populate(
       "author",
-      "fullName email"
+      "fullName email",
     );
 
     res.status(200).json({
@@ -279,11 +279,22 @@ exports.updateUserStatus = async (req, res) => {
 // Get dashboard statistics (admin only)
 exports.getDashboardStats = async (req, res) => {
   try {
-    // Total users
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ status: "active" });
-    const suspendedUsers = await User.countDocuments({ status: "suspended" });
-    const bannedUsers = await User.countDocuments({ status: "banned" });
+    // Total users (excluding current admin)
+    const totalUsers = await User.countDocuments({
+      _id: { $ne: req.user._id },
+    });
+    const activeUsers = await User.countDocuments({
+      status: "active",
+      _id: { $ne: req.user._id },
+    });
+    const suspendedUsers = await User.countDocuments({
+      status: "suspended",
+      _id: { $ne: req.user._id },
+    });
+    const bannedUsers = await User.countDocuments({
+      status: "banned",
+      _id: { $ne: req.user._id },
+    });
 
     // Total posts
     const totalPosts = await Post.countDocuments({ isDeleted: false });
@@ -297,8 +308,8 @@ exports.getDashboardStats = async (req, res) => {
     });
     const deletedPosts = await Post.countDocuments({ isDeleted: true });
 
-    // Recent activity
-    const recentUsers = await User.find()
+    // Recent activity (excluding current admin from users)
+    const recentUsers = await User.find({ _id: { $ne: req.user._id } })
       .select("-password")
       .sort({ createdAt: -1 })
       .limit(5);
@@ -334,7 +345,7 @@ exports.getDashboardStats = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    // console.error(error);
     res.status(500).json({
       message: "Server error",
     });
