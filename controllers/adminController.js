@@ -48,15 +48,12 @@ exports.getAllUsersAdmin = async (req, res) => {
 // Get all posts including drafts and deleted (admin only)
 exports.getAllPostsAdmin = async (req, res) => {
   try {
-    const { published, isDeleted, category, author, search } = req.query;
+    const { isDeleted, category, author, search } = req.query;
 
-    // Build filter
-    let filter = {};
-
-    // Filter by published status
-    if (published !== undefined) {
-      filter.published = published === "true";
-    }
+    // Build filter - Only show published posts
+    let filter = {
+      published: true  // Always filter for published posts only
+    };
 
     // Filter by deleted status
     if (isDeleted !== undefined) {
