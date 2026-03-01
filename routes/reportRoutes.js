@@ -1,5 +1,5 @@
 const express = require("express");
-const { reportPost, getAllReports } = require("../controllers/reportController");
+const { reportPost, getAllReports, getReportStats } = require("../controllers/reportController");
 
 const protect = require("../middlewares/auth_middle_ware");
 const adminOnly = require("../middlewares/adminOnly");
@@ -11,6 +11,9 @@ router.post("/:postId/report", protect, reportPost);
 
 // Get all reports 
 router.get("/admin/all", protect, adminOnly, getAllReports);
+
+// Get report statistics
+router.get("/admin/stats", protect, adminOnly, getReportStats);
 
 
 module.exports = router;

@@ -8,7 +8,14 @@ exports.reportPost = async (req, res) => {
     const { reason, description } = req.body;
 
     // Validate reason
-    const validReasons = ["spam", "abuse", "illegal", "harassment", "misinformation", "other"];
+    const validReasons = [
+      "spam",
+      "abuse",
+      "illegal",
+      "harassment",
+      "misinformation",
+      "other",
+    ];
     if (!reason || !validReasons.includes(reason)) {
       return res.status(400).json({
         message: `Invalid reason. Must be one of: ${validReasons.join(", ")}`,
@@ -97,7 +104,17 @@ exports.getAllReports = async (req, res) => {
     }
 
     // Filter by reason
-    if (reason && ["spam", "abuse", "illegal", "harassment", "misinformation", "other"].includes(reason)) {
+    if (
+      reason &&
+      [
+        "spam",
+        "abuse",
+        "illegal",
+        "harassment",
+        "misinformation",
+        "other",
+      ].includes(reason)
+    ) {
       filter.reason = reason;
     }
 
@@ -140,6 +157,68 @@ exports.getAllReports = async (req, res) => {
       count: reports.length,
       reports,
       groupedByPost: Object.values(reportsByPost),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+// Admin: Get report statistics
+exports.getReportStats = async (req, res) => {
+  try {
+    const [totalReports, pendingReports, reviewedReports, dismissedReports] =
+      await Promise.all([
+        Report.countDocuments(),
+        Report.countDocuments({ status: "pending" }),
+        Report.countDocuments({ status: "reviewed" }),
+        Report.countDocuments({ status: "dismissed" }),
+      ]);
+
+    // Reports by reason
+    const reportsByReason = await Report.aggregate([
+      {
+        $group: {
+          _id: "$reason",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Most reported posts
+    const mostReportedPosts = await Report.aggregate([
+      { $match: { status: "pending" } },
+      {
+        $group: {
+          _id: "$post",
+          reportCount: { $sum: 1 },
+        },
+      },
+      { $sort: { reportCount: -1 } },
+      { $limit: 10 },
+    ]);
+
+    // Populate post details
+    const populatedMostReported = await Post.populate(mostReportedPosts, {
+      path: "_id",
+      select: "title author",
+      populate: { path: "author", select: "fullName email" },
+    });
+
+    res.status(200).json({
+      overview: {
+        total: totalReports,
+        pending: pendingReports,
+        reviewed: reviewedReports,
+        dismissed: dismissedReports,
+      },
+      byReason: reportsByReason,
+      mostReportedPosts: populatedMostReported.map((item) => ({
+        post: item._id,
+        reportCount: item.reportCount,
+      })),
     });
   } catch (error) {
     console.error(error);
