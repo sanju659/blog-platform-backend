@@ -79,3 +79,72 @@ exports.reportPost = async (req, res) => {
     });
   }
 };
+
+// Admin: Get all reports
+exports.getAllReports = async (req, res) => {
+  try {
+    const { status, reason, postId } = req.query;
+
+    // Build filter
+    let filter = {};
+
+    // Filter by status
+    if (status && ["pending", "reviewed", "dismissed"].includes(status)) {
+      filter.status = status;
+    } else {
+      // By default, show only pending reports
+      filter.status = "pending";
+    }
+
+    // Filter by reason
+    if (reason && ["spam", "abuse", "illegal", "harassment", "misinformation", "other"].includes(reason)) {
+      filter.reason = reason;
+    }
+
+    // Filter by specific post
+    if (postId) {
+      filter.post = postId;
+    }
+
+    const reports = await Report.find(filter)
+      .populate("post", "title content excerpt image author")
+      .populate("reportedBy", "fullName email")
+      .populate("reviewedBy", "fullName email")
+      .populate({
+        path: "post",
+        populate: {
+          path: "author",
+          select: "fullName email image",
+        },
+      })
+      .sort({ createdAt: -1 });
+
+    // Group reports by post for better overview
+    const reportsByPost = {};
+    reports.forEach((report) => {
+      if (report.post) {
+        const postId = report.post._id.toString();
+        if (!reportsByPost[postId]) {
+          reportsByPost[postId] = {
+            post: report.post,
+            reportCount: 0,
+            reports: [],
+          };
+        }
+        reportsByPost[postId].reportCount++;
+        reportsByPost[postId].reports.push(report);
+      }
+    });
+
+    res.status(200).json({
+      count: reports.length,
+      reports,
+      groupedByPost: Object.values(reportsByPost),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
