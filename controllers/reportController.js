@@ -227,3 +227,38 @@ exports.getReportStats = async (req, res) => {
     });
   }
 };
+
+// Admin: Get reports for a specific post
+exports.getPostReports = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const reports = await Report.find({ post: postId })
+      .populate("reportedBy", "fullName email")
+      .populate("reviewedBy", "fullName email")
+      .sort({ createdAt: -1 });
+
+    if (reports.length === 0) {
+      return res.status(404).json({
+        message: "No reports found for this post",
+      });
+    }
+
+    res.status(200).json({
+      count: reports.length,
+      reports,
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid post ID",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
