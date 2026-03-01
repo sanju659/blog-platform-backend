@@ -23,11 +23,14 @@ const authRoutes = require("./routes/authRoutes");
 const postRoutes = require("./routes/postRoutes");
 // importing admin route
 const adminRoutes = require("./routes/adminRoutes");
+// importing reporting route
+const reportRoutes = require("./routes/reportRoutes");
 
 // Mounting the Route
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/reports", reportRoutes);
 
 // app.get('/', (req, res) => {
 //   res.send('Hello World!')
