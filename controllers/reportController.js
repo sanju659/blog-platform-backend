@@ -262,3 +262,49 @@ exports.getPostReports = async (req, res) => {
     });
   }
 };
+
+// Admin: Dismiss a report (false report)
+exports.dismissReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const { note } = req.body;
+
+    const report = await Report.findById(reportId);
+
+    if (!report) {
+      return res.status(404).json({
+        message: "Report not found",
+      });
+    }
+
+    // Update report status
+    report.status = "dismissed";
+    report.reviewedBy = req.user._id;
+    report.reviewedAt = new Date();
+    report.reviewNote = note || "Report dismissed - no violation found";
+
+    await report.save();
+
+    const updatedReport = await Report.findById(reportId)
+      .populate("post", "title")
+      .populate("reportedBy", "fullName email")
+      .populate("reviewedBy", "fullName email");
+
+    res.status(200).json({
+      message: "Report dismissed successfully",
+      report: updatedReport,
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid report ID",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
