@@ -52,7 +52,7 @@ exports.getAllPostsAdmin = async (req, res) => {
 
     // Build filter - Only show published posts
     let filter = {
-      published: true  // Always filter for published posts only
+      published: true, // Always filter for published posts only
     };
 
     // Filter by deleted status
@@ -220,7 +220,6 @@ exports.updateUserStatus = async (req, res) => {
     const validStatuses = ["active", "suspended", "banned"];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
-        // message --> Invalid status. Must be one of: active, suspended, banned
         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
       });
     }
@@ -247,6 +246,15 @@ exports.updateUserStatus = async (req, res) => {
       });
     }
 
+    const previousStatus = user.status;
+
+    // Prevent setting same status
+    if (previousStatus === status) {
+      return res.status(400).json({
+        message: `User is already ${status}`,
+      });
+    }
+
     // Update user status
     user.status = status;
     user.statusReason = reason || null;
@@ -254,12 +262,68 @@ exports.updateUserStatus = async (req, res) => {
 
     await user.save();
 
+    // Handle posts based on status change
+    let postAction = null;
+
+    // If user is being BANNED or SUSPENDED -> Hide all their posts
+    if (status === "banned" || status === "suspended") {
+      const result = await Post.updateMany(
+        {
+          author: user._id,
+          isDeleted: false,
+        },
+        {
+          $set: {
+            isDeleted: true,
+            deletedBy: req.user._id,
+            deletedAt: new Date(),
+            deletionReason: status === "banned" ? "violation" : "other",
+          },
+        },
+      );
+
+      postAction = {
+        action: "hidden",
+        count: result.modifiedCount,
+        message: `${result.modifiedCount} post(s) automatically hidden`,
+      };
+    }
+
+    // If user is being REACTIVATED -> Restore all their posts
+    if (
+      status === "active" &&
+      (previousStatus === "banned" || previousStatus === "suspended")
+    ) {
+      const result = await Post.updateMany(
+        {
+          author: user._id,
+          isDeleted: true,
+          deletedBy: { $ne: null },
+        },
+        {
+          $set: {
+            isDeleted: false,
+            deletedBy: null,
+            deletedAt: null,
+            deletionReason: null,
+          },
+        },
+      );
+
+      postAction = {
+        action: "restored",
+        count: result.modifiedCount,
+        message: `${result.modifiedCount} post(s) automatically restored`,
+      };
+    }
+
     res.status(200).json({
       message: `User ${status} successfully`,
       user,
+      posts: postAction,
     });
   } catch (error) {
-    // console.error(error);
+    console.error(error);
 
     if (error.name === "CastError") {
       return res.status(400).json({
@@ -277,24 +341,26 @@ exports.updateUserStatus = async (req, res) => {
 exports.getDashboardStats = async (req, res) => {
   try {
     // Total users (excluding current admin)
-    const totalUsers = await User.countDocuments({ _id: { $ne: req.user._id } });
-    const activeUsers = await User.countDocuments({ 
+    const totalUsers = await User.countDocuments({
+      _id: { $ne: req.user._id },
+    });
+    const activeUsers = await User.countDocuments({
       status: "active",
-      _id: { $ne: req.user._id }
+      _id: { $ne: req.user._id },
     });
-    const suspendedUsers = await User.countDocuments({ 
+    const suspendedUsers = await User.countDocuments({
       status: "suspended",
-      _id: { $ne: req.user._id }
+      _id: { $ne: req.user._id },
     });
-    const bannedUsers = await User.countDocuments({ 
+    const bannedUsers = await User.countDocuments({
       status: "banned",
-      _id: { $ne: req.user._id }
+      _id: { $ne: req.user._id },
     });
 
     // Total posts (only published and deleted - no drafts)
-    const totalPosts = await Post.countDocuments({ 
+    const totalPosts = await Post.countDocuments({
       published: true,
-      isDeleted: false 
+      isDeleted: false,
     });
     const publishedPosts = await Post.countDocuments({
       published: true,
@@ -308,9 +374,9 @@ exports.getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
-    const recentPosts = await Post.find({ 
-      published: true,  // Only published posts
-      isDeleted: false 
+    const recentPosts = await Post.find({
+      published: true, // Only published posts
+      isDeleted: false,
     })
       .populate("author", "fullName email")
       .sort({ createdAt: -1 })
