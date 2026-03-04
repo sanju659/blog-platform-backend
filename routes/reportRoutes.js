@@ -4,7 +4,8 @@ const {
   getAllReports,
   getReportStats,
   getPostReports,
-  dismissReport
+  dismissReport,
+  reviewReport
 } = require("../controllers/reportController");
 
 const protect = require("../middlewares/auth_middle_ware");
@@ -26,5 +27,8 @@ router.get("/admin/post/:postId", protect, adminOnly, getPostReports);
 
 // Dismiss a report (false report)
 router.put("/admin/:reportId/dismiss", protect, adminOnly, dismissReport);
+
+// Review report and take action (delete post or dismiss)
+router.put("/admin/:reportId/review", protect, adminOnly, reviewReport);
 
 module.exports = router;

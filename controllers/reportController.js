@@ -308,3 +308,80 @@ exports.dismissReport = async (req, res) => {
     });
   }
 };
+
+// Admin: Review report and delete post
+exports.reviewReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const { deletionReason, note } = req.body;
+
+    // Validate deletion reason
+    const validDeletionReasons = ["spam", "abuse", "illegal", "violation", "other"];
+    if (!deletionReason || !validDeletionReasons.includes(deletionReason)) {
+      return res.status(400).json({
+        message: `Invalid deletion reason. Must be one of: ${validDeletionReasons.join(", ")}`,
+      });
+    }
+
+    const report = await Report.findById(reportId).populate("post");
+
+    if (!report) {
+      return res.status(404).json({
+        message: "Report not found",
+      });
+    }
+
+    if (!report.post) {
+      return res.status(404).json({
+        message: "Reported post not found",
+      });
+    }
+
+    // Check if post is already deleted
+    if (report.post.isDeleted) {
+      return res.status(400).json({
+        message: "This post has already been deleted",
+      });
+    }
+
+    // Soft delete the post
+    const post = report.post;
+    post.isDeleted = true;
+    post.deletedBy = req.user._id;
+    post.deletedAt = new Date();
+    post.deletionReason = deletionReason;
+    await post.save();
+
+    // Mark all pending reports for this post as reviewed
+    await Report.updateMany(
+      { post: post._id, status: "pending" },
+      {
+        status: "reviewed",
+        reviewedBy: req.user._id,
+        reviewedAt: new Date(),
+        reviewNote: note || "Post deleted based on report",
+      }
+    );
+
+    return res.status(200).json({
+      message: "Post deleted successfully and all reports marked as reviewed",
+      post: {
+        id: post._id,
+        title: post.title,
+        isDeleted: post.isDeleted,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid report ID",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
