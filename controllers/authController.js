@@ -49,12 +49,12 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password required",
-      });
-    }
+    // Validation(Validation done in express validator)
+    // if (!email || !password) {
+    //   return res.status(400).json({
+    //     message: "Email and password required",
+    //   });
+    // }
 
     // Check user
     const user = await User.findOne({ email });

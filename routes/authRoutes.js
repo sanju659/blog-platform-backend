@@ -6,11 +6,15 @@ const {
   getMe,
 } = require("../controllers/authController");
 const protect = require("../middlewares/auth_middle_ware");
+const {
+  validateSignup,
+  validateLogin,
+} = require("../validators/authValidator");
 
 const router = express.Router();
 
-router.post("/signup", signup);
-router.post("/login", login);
+router.post("/signup", validateSignup, signup);
+router.post("/login",validateLogin, login);
 router.get("/users", getAllUsers);
 // Protected route
 router.get("/me", protect, getMe);
