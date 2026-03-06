@@ -8,11 +8,11 @@ exports.createPost = async (req, res) => {
     const { title, content, excerpt, category, published } = req.body;
 
     // Basic validation
-    if (!title || !content) {
-      return res.status(400).json({
-        message: "Title and content are required",
-      });
-    }
+    // if (!title || !content) {
+    //   return res.status(400).json({
+    //     message: "Title and content are required",
+    //   });
+    // }
 
     // Get image path from uploaded file (if exists)
     const imagePath = req.file
@@ -107,11 +107,11 @@ exports.getPostById = async (req, res) => {
   } catch (error) {
     // console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid post ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid post ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
@@ -216,11 +216,11 @@ exports.updatePost = async (req, res) => {
   } catch (error) {
     // console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid post ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid post ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
@@ -271,11 +271,11 @@ exports.deletePost = async (req, res) => {
   } catch (error) {
     // console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid post ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid post ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",

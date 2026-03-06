@@ -5,26 +5,31 @@ const {
   getPostById,
   getMyPosts,
   updatePost,
-  deletePost
+  deletePost,
 } = require("./../controllers/postController");
 
 const protect = require("../middlewares/auth_middle_ware");
 const optionalAuth = require("../middlewares/optional_auth");
 const upload = require("../config/multerConfig");
+const {
+  validateCreatePost,
+  validateUpdatePost,
+  validatePostId,
+} = require("../validators/postValidator");
 
 const router = express.Router();
 
 // Create post with image upload
-router.post("/create", protect, upload.single("image"), createPost);
+router.post("/create", protect, upload.single("image"), validateCreatePost, createPost);
 // Get all published posts (public)
 router.get("/allposts", getAllPosts);
 // Get posts by the user
 router.get("/my-posts", protect, getMyPosts);
 // Get single post by ID (optional auth)
-router.get("/:id", optionalAuth, getPostById);
+router.get("/:id", optionalAuth,validatePostId, getPostById);
 // Update post (author only, protected)
-router.put("/update/:id", protect, upload.single("image"), updatePost);
+router.put("/update/:id", protect, upload.single("image"), validateUpdatePost, updatePost);
 // Delete post (author only)
-router.delete("/delete/:id", protect, deletePost);
+router.delete("/delete/:id", protect, validatePostId, deletePost);
 
 module.exports = router;
