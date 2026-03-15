@@ -105,12 +105,12 @@ exports.softDeletePost = async (req, res) => {
     const { reason } = req.body;
 
     // Validate reason
-    const validReasons = ["spam", "abuse", "illegal", "violation", "other"];
-    if (!reason || !validReasons.includes(reason)) {
-      return res.status(400).json({
-        message: `Invalid reason. Must be one of: ${validReasons.join(", ")}`,
-      });
-    }
+    // const validReasons = ["spam", "abuse", "illegal", "violation", "other"];
+    // if (!reason || !validReasons.includes(reason)) {
+    //   return res.status(400).json({
+    //     message: `Invalid reason. Must be one of: ${validReasons.join(", ")}`,
+    //   });
+    // }
 
     const post = await Post.findById(id);
 
@@ -217,12 +217,12 @@ exports.updateUserStatus = async (req, res) => {
     const { status, reason } = req.body;
 
     // Validate status
-    const validStatuses = ["active", "suspended", "banned"];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-      });
-    }
+    // const validStatuses = ["active", "suspended", "banned"];
+    // if (!status || !validStatuses.includes(status)) {
+    //   return res.status(400).json({
+    //     message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+    //   });
+    // }
 
     const user = await User.findById(userId).select("-password");
 
