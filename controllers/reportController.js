@@ -8,19 +8,19 @@ exports.reportPost = async (req, res) => {
     const { reason, description } = req.body;
 
     // Validate reason
-    const validReasons = [
-      "spam",
-      "abuse",
-      "illegal",
-      "harassment",
-      "misinformation",
-      "other",
-    ];
-    if (!reason || !validReasons.includes(reason)) {
-      return res.status(400).json({
-        message: `Invalid reason. Must be one of: ${validReasons.join(", ")}`,
-      });
-    }
+    // const validReasons = [
+    //   "spam",
+    //   "abuse",
+    //   "illegal",
+    //   "harassment",
+    //   "misinformation",
+    //   "other",
+    // ];
+    // if (!reason || !validReasons.includes(reason)) {
+    //   return res.status(400).json({
+    //     message: `Invalid reason. Must be one of: ${validReasons.join(", ")}`,
+    //   });
+    // }
 
     // Check if post exists
     const post = await Post.findById(postId);
@@ -75,11 +75,11 @@ exports.reportPost = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid post ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid post ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
@@ -251,11 +251,11 @@ exports.getPostReports = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid post ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid post ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
@@ -297,11 +297,11 @@ exports.dismissReport = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid report ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid report ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
@@ -316,12 +316,12 @@ exports.reviewReport = async (req, res) => {
     const { deletionReason, note } = req.body;
 
     // Validate deletion reason
-    const validDeletionReasons = ["spam", "abuse", "illegal", "violation", "other"];
-    if (!deletionReason || !validDeletionReasons.includes(deletionReason)) {
-      return res.status(400).json({
-        message: `Invalid deletion reason. Must be one of: ${validDeletionReasons.join(", ")}`,
-      });
-    }
+    // const validDeletionReasons = ["spam", "abuse", "illegal", "violation", "other"];
+    // if (!deletionReason || !validDeletionReasons.includes(deletionReason)) {
+    //   return res.status(400).json({
+    //     message: `Invalid deletion reason. Must be one of: ${validDeletionReasons.join(", ")}`,
+    //   });
+    // }
 
     const report = await Report.findById(reportId).populate("post");
 
@@ -374,11 +374,11 @@ exports.reviewReport = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid report ID",
-      });
-    }
+    // if (error.name === "CastError") {
+    //   return res.status(400).json({
+    //     message: "Invalid report ID",
+    //   });
+    // }
 
     res.status(500).json({
       message: "Server error",
