@@ -125,7 +125,7 @@ exports.getAllReports = async (req, res) => {
 
     const reports = await Report.find(filter)
       .populate("post", "title content excerpt image author")
-      .populate("reportedBy", "fullName email")
+      .populate("reportedBy", "fullName email image")
       .populate("reviewedBy", "fullName email")
       .populate({
         path: "post",
