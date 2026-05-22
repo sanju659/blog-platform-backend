@@ -16,7 +16,7 @@ exports.createPost = async (req, res) => {
 
     // Get image path from uploaded file (if exists)
     const imagePath = req.file
-      ? `http://127.0.0.1:3000/uploads/${req.file.filename}`
+      ? `${process.env.BASE_URL}/uploads/${req.file.filename}`
       : null;
 
     const postData = {
@@ -78,7 +78,7 @@ exports.getPostById = async (req, res) => {
 
     const post = await Post.findOne({
       _id: id,
-      isDeleted: false // Only show non-deleted posts
+      isDeleted: false, // Only show non-deleted posts
     }).populate("author", "fullName image");
 
     if (!post) {
@@ -122,9 +122,9 @@ exports.getPostById = async (req, res) => {
 // Get posts by the user
 exports.getMyPosts = async (req, res) => {
   try {
-    const posts = await Post.find({ 
+    const posts = await Post.find({
       author: req.user._id,
-      isDeleted: false // Only show non-deleted posts
+      isDeleted: false, // Only show non-deleted posts
     }).sort({
       createdAt: -1,
     });
@@ -146,7 +146,7 @@ exports.updatePost = async (req, res) => {
 
     const post = await Post.findOne({
       _id: id,
-      isDeleted: false // Cannot update deleted posts
+      isDeleted: false, // Cannot update deleted posts
     });
 
     if (!post) {
@@ -175,17 +175,15 @@ exports.updatePost = async (req, res) => {
         const oldImagePath = path.join(
           __dirname,
           "..",
-          post.image.replace("http://127.0.0.1:3000/", ""),
+          post.image.replace(`${process.env.BASE_URL}/`, ""),
         );
-        // Check file exists before deleting
         if (fs.existsSync(oldImagePath)) {
-          //Delete the old file
           fs.unlinkSync(oldImagePath);
         }
       }
 
       // Set new image(Save new image URL)
-      post.image = `http://127.0.0.1:3000/uploads/${req.file.filename}`;
+      post.image = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
     }
 
     // Handle publish logic
@@ -235,7 +233,7 @@ exports.deletePost = async (req, res) => {
 
     const post = await Post.findOne({
       _id: id,
-      isDeleted: false // Cannot delete already deleted posts
+      isDeleted: false, // Cannot delete already deleted posts
     });
 
     if (!post) {
@@ -256,7 +254,7 @@ exports.deletePost = async (req, res) => {
       const imagePath = path.join(
         __dirname,
         "..",
-        post.image.replace("http://127.0.0.1:3000/", ""),
+        post.image.replace(`${process.env.BASE_URL}/`, ""),
       );
       if (fs.existsSync(imagePath)) {
         fs.unlinkSync(imagePath);
