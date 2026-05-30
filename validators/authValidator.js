@@ -19,18 +19,22 @@ const handleValidationErrors = (req, res, next) => {
 const validateSignup = [
   body("fullName")
     .trim()
-    .notEmpty().withMessage("Full name is required")
-    .isLength({ min: 2, max: 50 }).withMessage("Full name must be between 2 and 50 characters"),
+    .notEmpty()
+    .withMessage("Full name is required")
+    .isLength({ min: 2, max: 50 })
+    .withMessage("Full name must be between 2 and 50 characters"),
   body("email")
     .trim()
-    .notEmpty().withMessage("Email is required")
-    .isEmail().withMessage("Please provide a valid email"),
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Please provide a valid email"),
   body("password")
-    .notEmpty().withMessage("Password is required")
-    .isLength({ min: 5 }).withMessage("Password must be at least 5 characters"),
-  body("image")
-    .optional()
-    .isURL().withMessage("Image must be a valid URL"),
+    .notEmpty()
+    .withMessage("Password is required")
+    .isLength({ min: 5 })
+    .withMessage("Password must be at least 5 characters"),
+  body("image").optional().isURL().withMessage("Image must be a valid URL"),
   handleValidationErrors,
 ];
 
@@ -38,11 +42,55 @@ const validateSignup = [
 const validateLogin = [
   body("email")
     .trim()
-    .notEmpty().withMessage("Email is required")
-    .isEmail().withMessage("Please provide a valid email"),
-  body("password")
-    .notEmpty().withMessage("Password is required"),
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Please provide a valid email"),
+  body("password").notEmpty().withMessage("Password is required"),
   handleValidationErrors,
 ];
 
-module.exports = { validateSignup, validateLogin };
+// Update profile validation
+const validateUpdateProfile = [
+  body("fullName")
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage("Full name must be between 2 and 50 characters"),
+
+  body("email")
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage("Please provide a valid email"),
+
+  handleValidationErrors,
+];
+
+// Change password validation
+const validateChangePassword = [
+  body("currentPassword")
+    .notEmpty()
+    .withMessage("Current password is required"),
+
+  body("newPassword")
+    .notEmpty()
+    .withMessage("New password is required")
+    .isLength({ min: 5 })
+    .withMessage("New password must be at least 5 characters")
+    .custom((value, { req }) => {
+      if (value === req.body.currentPassword) {
+        throw new Error("New password must be different from current password");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+module.exports = {
+  validateSignup,
+  validateLogin,
+  validateUpdateProfile,
+  validateChangePassword,
+};

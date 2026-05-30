@@ -45,7 +45,7 @@ exports.signup = async (req, res) => {
 };
 
 // Login
-exports.login = async (req, res) => {
+exports.login = async (req, res) => { 
   try {
     const { email, password } = req.body;
 
@@ -86,6 +86,7 @@ exports.login = async (req, res) => {
         email: user.email,
         image: user.image,
         role: user.role,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -116,4 +117,87 @@ exports.getMe = async (req, res) => {
   }
 
   res.status(200).json(req.user);
+};
+
+// Update Profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const { fullName, email } = req.body;
+
+    // Check if email is already taken by another user
+    if (email) {
+      const existingUser = await User.findOne({
+        email,
+        _id: { $ne: req.user._id },
+      });
+      if (existingUser) {
+        return res.status(409).json({
+          message: "Email is already taken",
+        });
+      }
+    }
+
+    // Get image path from uploaded file (if exists)
+    const imagePath = req.file
+      ? `${process.env.BASE_URL}/uploads/${req.file.filename}`
+      : null;
+
+    // Update only provided fields
+    if (fullName) req.user.fullName = fullName;
+    if (email) req.user.email = email;
+    if (imagePath) req.user.image = imagePath;
+
+    await req.user.save();
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      user: {
+        id: req.user._id,
+        fullName: req.user.fullName,
+        email: req.user.email,
+        image: req.user.image,
+        role: req.user.role,
+        createdAt: req.user.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+
+// Change Password
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // Get user with password (req.user doesn't have password since we use .select("-password"))
+    const user = await User.findById(req.user._id);
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
 };
