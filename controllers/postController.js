@@ -1,19 +1,23 @@
 const Post = require("./../models/Post");
 const fs = require("fs");
 const path = require("path");
+const { compressAndSaveImage } = require("../utils/imageProcessor");
 
 // Create a new post
 exports.createPost = async (req, res) => {
   try {
     const { title, content, excerpt, category, published } = req.body;
 
-    // Get image paths from uploaded files (if any)
-    const imagePaths =
-      req.files && req.files.length > 0
-        ? req.files.map(
-            (file) => `${process.env.BASE_URL}/uploads/${file.filename}`,
-          )
-        : [];
+    // Compress and save each uploaded image, then build URLs
+    let imagePaths = [];
+    if (req.files && req.files.length > 0) {
+      imagePaths = await Promise.all(
+        req.files.map(async (file) => {
+          const filename = await compressAndSaveImage(file.buffer);
+          return `${process.env.BASE_URL}/uploads/${filename}`;
+        }),
+      );
+    }
 
     const postData = {
       title,
@@ -194,8 +198,11 @@ exports.updatePost = async (req, res) => {
 
     // Append any newly uploaded images
     if (req.files && req.files.length > 0) {
-      const newImagePaths = req.files.map(
-        (file) => `${process.env.BASE_URL}/uploads/${file.filename}`,
+      const newImagePaths = await Promise.all(
+        req.files.map(async (file) => {
+          const filename = await compressAndSaveImage(file.buffer);
+          return `${process.env.BASE_URL}/uploads/${filename}`;
+        }),
       );
       updatedImages = [...updatedImages, ...newImagePaths];
     }

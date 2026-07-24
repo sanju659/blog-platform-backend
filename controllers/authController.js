@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { compressAndSaveImage } = require("../utils/imageProcessor");
 
 // Sign Up
 exports.signup = async (req, res) => {
@@ -45,7 +46,7 @@ exports.signup = async (req, res) => {
 };
 
 // Login
-exports.login = async (req, res) => { 
+exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -124,7 +125,6 @@ exports.updateProfile = async (req, res) => {
   try {
     const { fullName, email } = req.body;
 
-    // Check if email is already taken by another user
     if (email) {
       const existingUser = await User.findOne({
         email,
@@ -137,12 +137,13 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    // Get image path from uploaded file (if exists)
-    const imagePath = req.file
-      ? `${process.env.BASE_URL}/uploads/${req.file.filename}`
-      : null;
+    // Compress and save the uploaded profile image (if provided)
+    let imagePath = null;
+    if (req.file) {
+      const filename = await compressAndSaveImage(req.file.buffer);
+      imagePath = `${process.env.BASE_URL}/uploads/${filename}`;
+    }
 
-    // Update only provided fields
     if (fullName) req.user.fullName = fullName;
     if (email) req.user.email = email;
     if (imagePath) req.user.image = imagePath;
@@ -167,7 +168,6 @@ exports.updateProfile = async (req, res) => {
     });
   }
 };
-
 
 // Change Password
 exports.changePassword = async (req, res) => {
