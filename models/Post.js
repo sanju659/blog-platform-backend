@@ -20,10 +20,10 @@ const postSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Content image
-    image: {
-      type: String, // image URL for now
-      default: "https://via.placeholder.com/800x400?text=No+Image",
+    // Content images (array of URLs)
+    images: {
+      type: [String],
+      default: [],
     },
 
     // Creator of the post(From User Collection)

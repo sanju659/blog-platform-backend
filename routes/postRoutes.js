@@ -20,7 +20,7 @@ const {
 const router = express.Router();
 
 // Create post with image upload
-router.post("/create", protect, upload.single("image"), validateCreatePost, createPost);
+router.post("/create", protect, upload.array("images", 5), validateCreatePost, createPost);
 // Get all published posts (public)
 router.get("/allposts", getAllPosts);
 // Get posts by the user
@@ -28,7 +28,7 @@ router.get("/my-posts", protect, getMyPosts);
 // Get single post by ID (optional auth)
 router.get("/:id", optionalAuth,validatePostId, getPostById);
 // Update post (author only, protected)
-router.put("/update/:id", protect, upload.single("image"), validateUpdatePost, updatePost);
+router.put("/update/:id", protect, upload.array("images", 5), validateUpdatePost, updatePost);
 // Delete post (author only)
 router.delete("/delete/:id", protect, validatePostId, deletePost);
 

@@ -7,34 +7,28 @@ exports.createPost = async (req, res) => {
   try {
     const { title, content, excerpt, category, published } = req.body;
 
-    // Basic validation
-    // if (!title || !content) {
-    //   return res.status(400).json({
-    //     message: "Title and content are required",
-    //   });
-    // }
-
-    // Get image path from uploaded file (if exists)
-    const imagePath = req.file
-      ? `${process.env.BASE_URL}/uploads/${req.file.filename}`
-      : null;
+    // Get image paths from uploaded files (if any)
+    const imagePaths =
+      req.files && req.files.length > 0
+        ? req.files.map(
+            (file) => `${process.env.BASE_URL}/uploads/${file.filename}`,
+          )
+        : [];
 
     const postData = {
       title,
       content,
       excerpt,
-      image: imagePath, // Use uploaded image path
+      images: imagePaths,
       category,
-      published: published === "true" || published === true, // Handle string/boolean from FormData
+      published: published === "true" || published === true,
       author: req.user._id,
     };
 
-    // If published, store the publish date
     if (postData.published === true) {
       postData.publishedAt = new Date();
     }
 
-    // Storing the create post data
     const userpost = await Post.create(postData);
 
     res.status(201).json({
@@ -42,7 +36,6 @@ exports.createPost = async (req, res) => {
       userpost,
     });
   } catch (error) {
-    // console.error(error);
     res.status(500).json({
       message: "Server error",
     });
@@ -142,11 +135,12 @@ exports.getMyPosts = async (req, res) => {
 exports.updatePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, excerpt, category, published } = req.body;
+    const { title, content, excerpt, category, published, existingImages } =
+      req.body;
 
     const post = await Post.findOne({
       _id: id,
-      isDeleted: false, // Cannot update deleted posts
+      isDeleted: false,
     });
 
     if (!post) {
@@ -155,56 +149,72 @@ exports.updatePost = async (req, res) => {
       });
     }
 
-    // Ownership check
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         message: "You are not allowed to update this post",
       });
     }
 
-    // Update fields only if provided
     if (title) post.title = title;
     if (content) post.content = content;
     if (excerpt) post.excerpt = excerpt;
     if (category) post.category = category;
 
-    // Handle image upload(This block runs only when replacing the image.)
-    if (req.file) {
-      // Delete old image if it exists and is stored locally
-      if (post.image && post.image.includes("uploads/")) {
-        const oldImagePath = path.join(
-          __dirname,
-          "..",
-          post.image.replace(`${process.env.BASE_URL}/`, ""),
-        );
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
+    // Start with current images
+    let updatedImages = post.images || [];
+
+    // Frontend sends which existing image URLs to KEEP (as a JSON string array)
+    if (existingImages !== undefined) {
+      let keepImages = [];
+      try {
+        keepImages = JSON.parse(existingImages);
+      } catch (e) {
+        keepImages = updatedImages; // fallback: keep all if parsing fails
       }
 
-      // Set new image(Save new image URL)
-      post.image = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
+      // Delete files that were removed
+      const removedImages = updatedImages.filter(
+        (img) => !keepImages.includes(img),
+      );
+      removedImages.forEach((img) => {
+        if (img && img.includes("uploads/")) {
+          const imgPath = path.join(
+            __dirname,
+            "..",
+            img.replace(`${process.env.BASE_URL}/`, ""),
+          );
+          if (fs.existsSync(imgPath)) {
+            fs.unlinkSync(imgPath);
+          }
+        }
+      });
+
+      updatedImages = keepImages;
     }
 
-    // Handle publish logic
+    // Append any newly uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImagePaths = req.files.map(
+        (file) => `${process.env.BASE_URL}/uploads/${file.filename}`,
+      );
+      updatedImages = [...updatedImages, ...newImagePaths];
+    }
+
+    // Enforce max 5 images
+    post.images = updatedImages.slice(0, 5);
+
     if (published !== undefined) {
       const isPublished = published === "true" || published === true;
 
-      // Draft --> Published
       if (isPublished && !post.publishedAt) {
         post.publishedAt = new Date();
       }
-
-      // Published --> Draft
       if (!isPublished) {
         post.publishedAt = null;
       }
-
-      // updating the status of 'published' in database
       post.published = isPublished;
     }
 
-    // Saving the whole post in Data Base
     const updatedPost = await post.save();
 
     res.status(200).json({
@@ -212,14 +222,6 @@ exports.updatePost = async (req, res) => {
       updatedPost,
     });
   } catch (error) {
-    // console.error(error);
-
-    // if (error.name === "CastError") {
-    //   return res.status(400).json({
-    //     message: "Invalid post ID",
-    //   });
-    // }
-
     res.status(500).json({
       message: "Server error",
     });
@@ -233,7 +235,7 @@ exports.deletePost = async (req, res) => {
 
     const post = await Post.findOne({
       _id: id,
-      isDeleted: false, // Cannot delete already deleted posts
+      isDeleted: false,
     });
 
     if (!post) {
@@ -242,23 +244,26 @@ exports.deletePost = async (req, res) => {
       });
     }
 
-    // Ownership check
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         message: "You are not allowed to delete this post",
       });
     }
 
-    // Delete image file if it exists and is stored locally
-    if (post.image && post.image.includes("uploads/")) {
-      const imagePath = path.join(
-        __dirname,
-        "..",
-        post.image.replace(`${process.env.BASE_URL}/`, ""),
-      );
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    // Delete all image files
+    if (post.images && post.images.length > 0) {
+      post.images.forEach((img) => {
+        if (img && img.includes("uploads/")) {
+          const imgPath = path.join(
+            __dirname,
+            "..",
+            img.replace(`${process.env.BASE_URL}/`, ""),
+          );
+          if (fs.existsSync(imgPath)) {
+            fs.unlinkSync(imgPath);
+          }
+        }
+      });
     }
 
     await post.deleteOne();
@@ -267,14 +272,6 @@ exports.deletePost = async (req, res) => {
       message: "Post deleted successfully",
     });
   } catch (error) {
-    // console.error(error);
-
-    // if (error.name === "CastError") {
-    //   return res.status(400).json({
-    //     message: "Invalid post ID",
-    //   });
-    // }
-
     res.status(500).json({
       message: "Server error",
     });
