@@ -37,4 +37,16 @@ const compressAndSaveImage = async (buffer) => {
   return filename;
 };
 
-module.exports = { compressAndSaveImage };
+// Saves a video buffer as-is (no compression yet — planned for later)
+const saveVideo = (buffer, originalname) => {
+  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+  const ext = path.extname(originalname) || ".mp4";
+  const filename = `${uniqueSuffix}${ext}`;
+  const filepath = path.join(UPLOADS_DIR, filename);
+
+  fs.writeFileSync(filepath, buffer);
+
+  return filename;
+};
+
+module.exports = { compressAndSaveImage, saveVideo };

@@ -20,9 +20,21 @@ const postSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Content images (array of URLs)
-    images: {
-      type: [String],
+    // Combined media (images + videos), preserves upload order
+    media: {
+      type: [
+        {
+          type: {
+            type: String,
+            enum: ["image", "video"],
+            required: true,
+          },
+          url: {
+            type: String,
+            required: true,
+          },
+        },
+      ],
       default: [],
     },
 

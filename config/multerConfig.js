@@ -1,21 +1,22 @@
 const multer = require("multer");
 
-// Store files in memory as buffers — we compress with Sharp before writing to disk
 const storage = multer.memoryStorage();
 
-// Only allow images, any size — Sharp will validate/handle the actual image data
+// Allow images and videos, any size
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image/")) {
+  if (
+    file.mimetype.startsWith("image/") ||
+    file.mimetype.startsWith("video/")
+  ) {
     cb(null, true);
   } else {
-    cb(new Error("Only image files are allowed"));
+    cb(new Error("Only image or video files are allowed"));
   }
 };
 
 const upload = multer({
   storage,
   fileFilter,
-  // No fileSize limit — any size is accepted as long as it's an image
 });
 
 module.exports = upload;

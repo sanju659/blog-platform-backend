@@ -1,29 +1,43 @@
 const Post = require("./../models/Post");
 const fs = require("fs");
 const path = require("path");
-const { compressAndSaveImage } = require("../utils/imageProcessor");
+const { compressAndSaveImage, saveVideo } = require("../utils/imageProcessor");
+
+// Processes uploaded files (images + videos) into { type, url } media objects
+const processMediaFiles = async (files) => {
+  if (!files || files.length === 0) return [];
+
+  return Promise.all(
+    files.map(async (file) => {
+      if (file.mimetype.startsWith("video/")) {
+        const filename = saveVideo(file.buffer, file.originalname);
+        return {
+          type: "video",
+          url: `${process.env.BASE_URL}/uploads/${filename}`,
+        };
+      } else {
+        const filename = await compressAndSaveImage(file.buffer);
+        return {
+          type: "image",
+          url: `${process.env.BASE_URL}/uploads/${filename}`,
+        };
+      }
+    }),
+  );
+};
 
 // Create a new post
 exports.createPost = async (req, res) => {
   try {
     const { title, content, excerpt, category, published } = req.body;
 
-    // Compress and save each uploaded image, then build URLs
-    let imagePaths = [];
-    if (req.files && req.files.length > 0) {
-      imagePaths = await Promise.all(
-        req.files.map(async (file) => {
-          const filename = await compressAndSaveImage(file.buffer);
-          return `${process.env.BASE_URL}/uploads/${filename}`;
-        }),
-      );
-    }
+    const media = await processMediaFiles(req.files);
 
     const postData = {
       title,
       content,
       excerpt,
-      images: imagePaths,
+      media,
       category,
       published: published === "true" || published === true,
       author: req.user._id,
@@ -139,7 +153,7 @@ exports.getMyPosts = async (req, res) => {
 exports.updatePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, excerpt, category, published, existingImages } =
+    const { title, content, excerpt, category, published, existingMedia } =
       req.body;
 
     const post = await Post.findOne({
@@ -164,51 +178,48 @@ exports.updatePost = async (req, res) => {
     if (excerpt) post.excerpt = excerpt;
     if (category) post.category = category;
 
-    // Start with current images
-    let updatedImages = post.images || [];
+    // Start with current media
+    let updatedMedia = post.media || [];
 
-    // Frontend sends which existing image URLs to KEEP (as a JSON string array)
-    if (existingImages !== undefined) {
-      let keepImages = [];
+    // Frontend sends which existing media items to KEEP (JSON array of {type, url})
+    if (existingMedia !== undefined) {
+      let keepMedia = [];
       try {
-        keepImages = JSON.parse(existingImages);
+        keepMedia = JSON.parse(existingMedia);
       } catch (e) {
-        keepImages = updatedImages; // fallback: keep all if parsing fails
+        keepMedia = updatedMedia; // fallback: keep all if parsing fails
       }
 
+      const keepUrls = keepMedia.map((m) => m.url);
+
       // Delete files that were removed
-      const removedImages = updatedImages.filter(
-        (img) => !keepImages.includes(img),
+      const removedMedia = updatedMedia.filter(
+        (m) => !keepUrls.includes(m.url),
       );
-      removedImages.forEach((img) => {
-        if (img && img.includes("uploads/")) {
-          const imgPath = path.join(
+      removedMedia.forEach((m) => {
+        if (m.url && m.url.includes("uploads/")) {
+          const filePath = path.join(
             __dirname,
             "..",
-            img.replace(`${process.env.BASE_URL}/`, ""),
+            m.url.replace(`${process.env.BASE_URL}/`, ""),
           );
-          if (fs.existsSync(imgPath)) {
-            fs.unlinkSync(imgPath);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
           }
         }
       });
 
-      updatedImages = keepImages;
+      updatedMedia = keepMedia;
     }
 
-    // Append any newly uploaded images
+    // Append any newly uploaded media
     if (req.files && req.files.length > 0) {
-      const newImagePaths = await Promise.all(
-        req.files.map(async (file) => {
-          const filename = await compressAndSaveImage(file.buffer);
-          return `${process.env.BASE_URL}/uploads/${filename}`;
-        }),
-      );
-      updatedImages = [...updatedImages, ...newImagePaths];
+      const newMedia = await processMediaFiles(req.files);
+      updatedMedia = [...updatedMedia, ...newMedia];
     }
 
-    // Enforce max 5 images
-    post.images = updatedImages.slice(0, 5);
+    // Enforce max 5 items total
+    post.media = updatedMedia.slice(0, 5);
 
     if (published !== undefined) {
       const isPublished = published === "true" || published === true;
@@ -258,16 +269,17 @@ exports.deletePost = async (req, res) => {
     }
 
     // Delete all image files
-    if (post.images && post.images.length > 0) {
-      post.images.forEach((img) => {
-        if (img && img.includes("uploads/")) {
-          const imgPath = path.join(
+    // Delete all media files (images + videos)
+    if (post.media && post.media.length > 0) {
+      post.media.forEach((m) => {
+        if (m.url && m.url.includes("uploads/")) {
+          const filePath = path.join(
             __dirname,
             "..",
-            img.replace(`${process.env.BASE_URL}/`, ""),
+            m.url.replace(`${process.env.BASE_URL}/`, ""),
           );
-          if (fs.existsSync(imgPath)) {
-            fs.unlinkSync(imgPath);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
           }
         }
       });
