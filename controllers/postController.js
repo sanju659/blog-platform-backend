@@ -87,15 +87,21 @@ exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findOne({
-      _id: id,
-      isDeleted: false, // Only show non-deleted posts
-    }).populate("author", "fullName image");
+    const post = await Post.findById(id).populate("author", "fullName image");
 
     if (!post) {
       return res.status(404).json({
         message: "Post not found",
       });
+    }
+
+    // Soft-deleted posts are only visible to admins
+    if (post.isDeleted) {
+      if (!req.user || req.user.role !== "admin") {
+        return res.status(404).json({
+          message: "Post not found",
+        });
+      }
     }
 
     // If post is a draft, only allow author to view it
@@ -106,7 +112,6 @@ exports.getPostById = async (req, res) => {
         });
       }
 
-      // Who created the post vs Who is making the request right now
       if (post.author._id.toString() !== req.user._id.toString()) {
         return res.status(403).json({
           message: "This post is not published",
@@ -116,14 +121,6 @@ exports.getPostById = async (req, res) => {
 
     res.status(200).json(post);
   } catch (error) {
-    // console.error(error);
-
-    // if (error.name === "CastError") {
-    //   return res.status(400).json({
-    //     message: "Invalid post ID",
-    //   });
-    // }
-
     res.status(500).json({
       message: "Server error",
     });
