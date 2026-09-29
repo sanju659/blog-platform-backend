@@ -1,23 +1,16 @@
 const sharp = require("sharp");
+const ffmpegPath = require("ffmpeg-static");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
 const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
 
-// Make sure the uploads folder exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-/**
- * Compresses an image buffer and writes it to /uploads.
- * - Auto-rotates based on EXIF orientation
- * - Resizes down to max 1920x1920 (keeps aspect ratio, never upscales)
- * - Converts to JPEG at quality 75 for a good size/quality tradeoff
- *
- * @param {Buffer} buffer - raw image buffer (from multer memoryStorage)
- * @returns {Promise<string>} filename of the saved, compressed image
- */
 const compressAndSaveImage = async (buffer) => {
   const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
   const filename = `${uniqueSuffix}.jpeg`;
@@ -37,16 +30,88 @@ const compressAndSaveImage = async (buffer) => {
   return filename;
 };
 
-// Saves a video buffer as-is (no compression yet — planned for later)
-const saveVideo = (buffer, originalname) => {
-  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-  const ext = path.extname(originalname) || ".mp4";
-  const filename = `${uniqueSuffix}${ext}`;
-  const filepath = path.join(UPLOADS_DIR, filename);
+/**
+ * Compresses a video buffer by spawning the ffmpeg binary directly.
+ * - Transcodes to H.264/MP4 (broad browser compatibility)
+ * - Caps resolution at 1080p (never upscales smaller videos)
+ * - CRF 28 = noticeably smaller file, still solid quality for web playback
+ * - Downmixes audio to AAC 128k
+ *
+ * @param {Buffer} buffer - raw video buffer (from multer memoryStorage)
+ * @returns {Promise<string>} filename of the saved, compressed video
+ */
+const compressAndSaveVideo = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-  fs.writeFileSync(filepath, buffer);
+    // ffmpeg needs an actual file to read from, so write the buffer to a temp file first
+    const tempInputPath = path.join(os.tmpdir(), `${uniqueSuffix}-input.tmp`);
+    const outputFilename = `${uniqueSuffix}.mp4`;
+    const outputPath = path.join(UPLOADS_DIR, outputFilename);
 
-  return filename;
+    fs.writeFileSync(tempInputPath, buffer);
+
+    const args = [
+      "-y",
+      "-i",
+      tempInputPath,
+
+      // Video
+      "-c:v",
+      "libx264",
+      "-crf",
+      "26",
+      "-preset",
+      "veryfast",
+
+      // Maximum 1080p, preserve aspect ratio, never upscale
+      "-vf",
+      "scale=1920:1080:force_original_aspect_ratio=decrease",
+
+      // Audio
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+
+      // Web-friendly MP4
+      "-movflags",
+      "+faststart",
+
+      outputPath,
+    ];
+
+    const ffmpegProcess = spawn(ffmpegPath, args);
+
+    // Capture FFmpeg's error/output information
+    let stderrOutput = "";
+    ffmpegProcess.stderr.on("data", (data) => {
+      stderrOutput += data.toString();
+    });
+
+    // Handle FFmpeg failing to start
+    ffmpegProcess.on("error", (err) => {
+      fs.unlink(tempInputPath, () => {});
+      reject(err);
+    });
+
+    // This part runs after FFmpeg finishes.
+    // Its job is to clean up the temporary file and tell
+    // your Promise whether the compression succeeded or failed.
+    ffmpegProcess.on("close", (code) => {
+      fs.unlink(tempInputPath, () => {}); // cleanup temp file, ignore errors
+
+      if (code === 0) {
+        resolve(outputFilename);
+      } else {
+        reject(
+          new Error(
+            `ffmpeg exited with code ${code}: ${stderrOutput.slice(-500)}`,
+          ),
+        );
+      }
+    });
+  });
 };
 
-module.exports = { compressAndSaveImage, saveVideo };
+module.exports = { compressAndSaveImage, compressAndSaveVideo };

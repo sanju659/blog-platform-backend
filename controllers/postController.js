@@ -1,7 +1,10 @@
 const Post = require("./../models/Post");
 const fs = require("fs");
 const path = require("path");
-const { compressAndSaveImage, saveVideo } = require("../utils/imageProcessor");
+const {
+  compressAndSaveImage,
+  compressAndSaveVideo,
+} = require("../utils/imageProcessor");
 
 // Processes uploaded files (images + videos) into { type, url } media objects
 const processMediaFiles = async (files) => {
@@ -10,7 +13,10 @@ const processMediaFiles = async (files) => {
   return Promise.all(
     files.map(async (file) => {
       if (file.mimetype.startsWith("video/")) {
-        const filename = saveVideo(file.buffer, file.originalname);
+        const filename = await compressAndSaveVideo(
+          file.buffer,
+          file.originalname,
+        );
         return {
           type: "video",
           url: `${process.env.BASE_URL}/uploads/${filename}`,
