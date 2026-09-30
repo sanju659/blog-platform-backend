@@ -40,11 +40,11 @@ const compressAndSaveImage = async (buffer) => {
  * @param {Buffer} buffer - raw video buffer (from multer memoryStorage)
  * @returns {Promise<string>} filename of the saved, compressed video
  */
-const compressAndSaveVideo = (buffer) => {
+
+const compressAndSaveVideo = (buffer, onProgress) => {
   return new Promise((resolve, reject) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-    // ffmpeg needs an actual file to read from, so write the buffer to a temp file first
     const tempInputPath = path.join(os.tmpdir(), `${uniqueSuffix}-input.tmp`);
     const outputFilename = `${uniqueSuffix}.mp4`;
     const outputPath = path.join(UPLOADS_DIR, outputFilename);
@@ -55,51 +55,80 @@ const compressAndSaveVideo = (buffer) => {
       "-y",
       "-i",
       tempInputPath,
-
-      // Video
       "-c:v",
       "libx264",
       "-crf",
       "26",
       "-preset",
       "veryfast",
-
-      // Maximum 1080p, preserve aspect ratio, never upscale
       "-vf",
       "scale=1920:1080:force_original_aspect_ratio=decrease",
-
-      // Audio
       "-c:a",
       "aac",
       "-b:a",
       "128k",
-
-      // Web-friendly MP4
       "-movflags",
       "+faststart",
-
+      "-progress",
+      "pipe:1", // stream machine-readable progress lines to stdout
+      "-nostats",
       outputPath,
     ];
 
     const ffmpegProcess = spawn(ffmpegPath, args);
 
-    // Capture FFmpeg's error/output information
+    let durationSeconds = null;
     let stderrOutput = "";
+
+    // ffmpeg prints "Duration: HH:MM:SS.ms" once near the start, in stderr
     ffmpegProcess.stderr.on("data", (data) => {
-      stderrOutput += data.toString();
+      const chunk = data.toString();
+      stderrOutput += chunk;
+
+      if (durationSeconds === null) {
+        const match = chunk.match(/Duration:\s(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+        if (match) {
+          const [, hours, minutes, seconds] = match;
+          durationSeconds =
+            Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+        }
+      }
     });
 
-    // Handle FFmpeg failing to start
+    // -progress pipe:1 writes key=value lines to stdout as it encodes
+    let stdoutBuffer = "";
+    ffmpegProcess.stdout.on("data", (data) => {
+      stdoutBuffer += data.toString();
+
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop(); // keep any incomplete trailing line for next chunk
+
+      for (const line of lines) {
+        if (line.startsWith("out_time_ms=") && durationSeconds && onProgress) {
+          const outTimeMs = Number(line.split("=")[1]);
+          if (!isNaN(outTimeMs)) {
+            const elapsedSeconds = outTimeMs / 1_000_000; // ffmpeg's field is actually microseconds
+            const percent = Math.min(
+              Math.round((elapsedSeconds / durationSeconds) * 100),
+              99, // cap at 99 until we get the final "end" signal
+            );
+            onProgress(percent);
+          }
+        }
+
+        if (line === "progress=end" && onProgress) {
+          onProgress(100);
+        }
+      }
+    });
+
     ffmpegProcess.on("error", (err) => {
       fs.unlink(tempInputPath, () => {});
       reject(err);
     });
 
-    // This part runs after FFmpeg finishes.
-    // Its job is to clean up the temporary file and tell
-    // your Promise whether the compression succeeded or failed.
     ffmpegProcess.on("close", (code) => {
-      fs.unlink(tempInputPath, () => {}); // cleanup temp file, ignore errors
+      fs.unlink(tempInputPath, () => {});
 
       if (code === 0) {
         resolve(outputFilename);

@@ -31,7 +31,16 @@ const postSchema = new mongoose.Schema(
           },
           url: {
             type: String,
-            required: true,
+            default: null, // null while a video is still processing
+          },
+          status: {
+            type: String,
+            enum: ["ready", "processing", "failed"],
+            default: "ready",
+          },
+          error: {
+            type: String,
+            default: null,
           },
         },
       ],
@@ -101,10 +110,14 @@ const postSchema = new mongoose.Schema(
       enum: ["spam", "abuse", "illegal", "violation", "other"],
       default: null,
     },
+    progress: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: true, // adds createdAt & updatedAt
-  }
+  },
 );
 
 // Indexes

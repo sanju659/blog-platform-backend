@@ -1,35 +1,74 @@
 const Post = require("./../models/Post");
 const fs = require("fs");
 const path = require("path");
+const mongoose = require("mongoose");
+const os = require("os");
+const videoQueue = require("../queues/videoQueue");
 const {
   compressAndSaveImage,
-  compressAndSaveVideo,
+  // compressAndSaveVideo,
 } = require("../utils/imageProcessor");
 
 // Processes uploaded files (images + videos) into { type, url } media objects
-const processMediaFiles = async (files) => {
-  if (!files || files.length === 0) return [];
+// const processMediaFiles = async (files) => {
+//   if (!files || files.length === 0) return [];
 
+//   return Promise.all(
+//     files.map(async (file) => {
+//       if (file.mimetype.startsWith("video/")) {
+//         const filename = await compressAndSaveVideo(
+//           file.buffer,
+//           file.originalname,
+//         );
+//         return {
+//           type: "video",
+//           url: `${process.env.BASE_URL}/uploads/${filename}`,
+//         };
+//       } else {
+//         const filename = await compressAndSaveImage(file.buffer);
+//         return {
+//           type: "image",
+//           url: `${process.env.BASE_URL}/uploads/${filename}`,
+//         };
+//       }
+//     }),
+//   );
+// };
+
+const buildVideoPlaceholder = () => ({
+  _id: new mongoose.Types.ObjectId(),
+  type: "video",
+  url: null,
+  status: "processing",
+});
+
+const processImageFiles = async (files) => {
   return Promise.all(
     files.map(async (file) => {
-      if (file.mimetype.startsWith("video/")) {
-        const filename = await compressAndSaveVideo(
-          file.buffer,
-          file.originalname,
-        );
-        return {
-          type: "video",
-          url: `${process.env.BASE_URL}/uploads/${filename}`,
-        };
-      } else {
-        const filename = await compressAndSaveImage(file.buffer);
-        return {
-          type: "image",
-          url: `${process.env.BASE_URL}/uploads/${filename}`,
-        };
-      }
+      const filename = await compressAndSaveImage(file.buffer);
+      return {
+        type: "image",
+        url: `${process.env.BASE_URL}/uploads/${filename}`,
+        status: "ready",
+      };
     }),
   );
+};
+
+// Writes the video buffer to a temp file and enqueues a compression job.
+// Passing a file path (not the raw buffer) keeps Redis job payloads small.
+const enqueueVideoJob = async (postId, mediaId, buffer) => {
+  const tempPath = path.join(
+    os.tmpdir(),
+    `${Date.now()}-${Math.round(Math.random() * 1e9)}-input.tmp`,
+  );
+  fs.writeFileSync(tempPath, buffer);
+
+  await videoQueue.add("compress-video", {
+    postId: postId.toString(),
+    mediaId: mediaId.toString(),
+    tempPath,
+  });
 };
 
 // Create a new post
@@ -37,7 +76,14 @@ exports.createPost = async (req, res) => {
   try {
     const { title, content, excerpt, category, published } = req.body;
 
-    const media = await processMediaFiles(req.files);
+    const files = req.files || [];
+    const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
+    const videoFiles = files.filter((f) => f.mimetype.startsWith("video/"));
+
+    const imageMedia = await processImageFiles(imageFiles);
+    const videoPlaceholders = videoFiles.map(() => buildVideoPlaceholder());
+
+    const media = [...imageMedia, ...videoPlaceholders].slice(0, 5);
 
     const postData = {
       title,
@@ -59,7 +105,16 @@ exports.createPost = async (req, res) => {
       message: "Post created successfully",
       userpost,
     });
+
+    // Enqueue background compression jobs for each video that made it into the final media array
+    videoFiles.forEach((file, idx) => {
+      const placeholder = videoPlaceholders[idx];
+      if (userpost.media.id(placeholder._id)) {
+        enqueueVideoJob(userpost._id, placeholder._id, file.buffer);
+      }
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({
       message: "Server error",
     });
@@ -181,23 +236,20 @@ exports.updatePost = async (req, res) => {
     if (excerpt) post.excerpt = excerpt;
     if (category) post.category = category;
 
-    // Start with current media
     let updatedMedia = post.media || [];
 
-    // Frontend sends which existing media items to KEEP (JSON array of {type, url})
     if (existingMedia !== undefined) {
       let keepMedia = [];
       try {
         keepMedia = JSON.parse(existingMedia);
       } catch (e) {
-        keepMedia = updatedMedia; // fallback: keep all if parsing fails
+        keepMedia = updatedMedia;
       }
 
-      const keepUrls = keepMedia.map((m) => m.url);
+      const keepUrls = keepMedia.map((m) => m.url).filter(Boolean);
 
-      // Delete files that were removed
       const removedMedia = updatedMedia.filter(
-        (m) => !keepUrls.includes(m.url),
+        (m) => m.url && !keepUrls.includes(m.url),
       );
       removedMedia.forEach((m) => {
         if (m.url && m.url.includes("uploads/")) {
@@ -215,14 +267,18 @@ exports.updatePost = async (req, res) => {
       updatedMedia = keepMedia;
     }
 
-    // Append any newly uploaded media
-    if (req.files && req.files.length > 0) {
-      const newMedia = await processMediaFiles(req.files);
-      updatedMedia = [...updatedMedia, ...newMedia];
-    }
+    const files = req.files || [];
+    const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
+    const videoFiles = files.filter((f) => f.mimetype.startsWith("video/"));
 
-    // Enforce max 5 items total
-    post.media = updatedMedia.slice(0, 5);
+    const imageMedia = await processImageFiles(imageFiles);
+    const videoPlaceholders = videoFiles.map(() => buildVideoPlaceholder());
+
+    updatedMedia = [...updatedMedia, ...imageMedia, ...videoPlaceholders].slice(
+      0,
+      5,
+    );
+    post.media = updatedMedia;
 
     if (published !== undefined) {
       const isPublished = published === "true" || published === true;
@@ -242,7 +298,15 @@ exports.updatePost = async (req, res) => {
       message: "Post updated successfully",
       updatedPost,
     });
+
+    videoFiles.forEach((file, idx) => {
+      const placeholder = videoPlaceholders[idx];
+      if (updatedPost.media.id(placeholder._id)) {
+        enqueueVideoJob(updatedPost._id, placeholder._id, file.buffer);
+      }
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({
       message: "Server error",
     });
