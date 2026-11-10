@@ -4,19 +4,13 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { uploadBuffer, uploadFile } = require("./storage");
 
-const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
+const uniqueName = () => Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
+// Compresses an image and uploads it to S3. Returns the public URL.
 const compressAndSaveImage = async (buffer) => {
-  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-  const filename = `${uniqueSuffix}.jpeg`;
-  const filepath = path.join(UPLOADS_DIR, filename);
-
-  await sharp(buffer)
+  const compressed = await sharp(buffer)
     .rotate()
     .resize({
       width: 1920,
@@ -25,29 +19,22 @@ const compressAndSaveImage = async (buffer) => {
       withoutEnlargement: true,
     })
     .jpeg({ quality: 75, mozjpeg: true })
-    .toFile(filepath);
+    .toBuffer();
 
-  return filename;
+  return uploadBuffer(
+    compressed,
+    `uploads/images/${uniqueName()}.jpeg`,
+    "image/jpeg",
+  );
 };
 
-/**
- * Compresses a video buffer by spawning the ffmpeg binary directly.
- * - Transcodes to H.264/MP4 (broad browser compatibility)
- * - Caps resolution at 1080p (never upscales smaller videos)
- * - CRF 28 = noticeably smaller file, still solid quality for web playback
- * - Downmixes audio to AAC 128k
- *
- * @param {Buffer} buffer - raw video buffer (from multer memoryStorage)
- * @returns {Promise<string>} filename of the saved, compressed video
- */
-
+// Compresses a video with ffmpeg, uploads the result to S3. Returns the public URL.
+// Calls onProgress(percent) as ffmpeg reports progress.
 const compressAndSaveVideo = (buffer, onProgress) => {
   return new Promise((resolve, reject) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-
-    const tempInputPath = path.join(os.tmpdir(), `${uniqueSuffix}-input.tmp`);
-    const outputFilename = `${uniqueSuffix}.mp4`;
-    const outputPath = path.join(UPLOADS_DIR, outputFilename);
+    const name = uniqueName();
+    const tempInputPath = path.join(os.tmpdir(), `${name}-input.tmp`);
+    const tempOutputPath = path.join(os.tmpdir(), `${name}-output.mp4`);
 
     fs.writeFileSync(tempInputPath, buffer);
 
@@ -62,7 +49,7 @@ const compressAndSaveVideo = (buffer, onProgress) => {
       "-preset",
       "veryfast",
       "-vf",
-      "scale=1920:1080:force_original_aspect_ratio=decrease",
+      "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
       "-c:a",
       "aac",
       "-b:a",
@@ -70,9 +57,9 @@ const compressAndSaveVideo = (buffer, onProgress) => {
       "-movflags",
       "+faststart",
       "-progress",
-      "pipe:1", // stream machine-readable progress lines to stdout
+      "pipe:1",
       "-nostats",
-      outputPath,
+      tempOutputPath,
     ];
 
     const ffmpegProcess = spawn(ffmpegPath, args);
@@ -80,7 +67,6 @@ const compressAndSaveVideo = (buffer, onProgress) => {
     let durationSeconds = null;
     let stderrOutput = "";
 
-    // ffmpeg prints "Duration: HH:MM:SS.ms" once near the start, in stderr
     ffmpegProcess.stderr.on("data", (data) => {
       const chunk = data.toString();
       stderrOutput += chunk;
@@ -95,49 +81,57 @@ const compressAndSaveVideo = (buffer, onProgress) => {
       }
     });
 
-    // -progress pipe:1 writes key=value lines to stdout as it encodes
     let stdoutBuffer = "";
     ffmpegProcess.stdout.on("data", (data) => {
       stdoutBuffer += data.toString();
 
       const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop(); // keep any incomplete trailing line for next chunk
+      stdoutBuffer = lines.pop();
 
       for (const line of lines) {
         if (line.startsWith("out_time_ms=") && durationSeconds && onProgress) {
           const outTimeMs = Number(line.split("=")[1]);
           if (!isNaN(outTimeMs)) {
-            const elapsedSeconds = outTimeMs / 1_000_000; // ffmpeg's field is actually microseconds
+            const elapsedSeconds = outTimeMs / 1_000_000;
             const percent = Math.min(
               Math.round((elapsedSeconds / durationSeconds) * 100),
-              99, // cap at 99 until we get the final "end" signal
+              99,
             );
             onProgress(percent);
           }
-        }
-
-        if (line === "progress=end" && onProgress) {
-          onProgress(100);
         }
       }
     });
 
     ffmpegProcess.on("error", (err) => {
       fs.unlink(tempInputPath, () => {});
+      fs.unlink(tempOutputPath, () => {});
       reject(err);
     });
 
-    ffmpegProcess.on("close", (code) => {
+    ffmpegProcess.on("close", async (code) => {
       fs.unlink(tempInputPath, () => {});
 
-      if (code === 0) {
-        resolve(outputFilename);
-      } else {
-        reject(
+      if (code !== 0) {
+        fs.unlink(tempOutputPath, () => {});
+        return reject(
           new Error(
             `ffmpeg exited with code ${code}: ${stderrOutput.slice(-500)}`,
           ),
         );
+      }
+
+      try {
+        const url = await uploadFile(
+          tempOutputPath,
+          `uploads/videos/${name}.mp4`,
+          "video/mp4",
+        );
+        resolve(url);
+      } catch (err) {
+        reject(err);
+      } finally {
+        fs.unlink(tempOutputPath, () => {});
       }
     });
   });

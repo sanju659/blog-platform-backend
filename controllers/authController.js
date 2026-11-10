@@ -2,6 +2,7 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { compressAndSaveImage } = require("../utils/imageProcessor");
+const { deleteByUrl } = require("../utils/storage");
 
 // Sign Up
 exports.signup = async (req, res) => {
@@ -140,15 +141,20 @@ exports.updateProfile = async (req, res) => {
     // Compress and save the uploaded profile image (if provided)
     let imagePath = null;
     if (req.file) {
-      const filename = await compressAndSaveImage(req.file.buffer);
-      imagePath = `${process.env.BASE_URL}/uploads/${filename}`;
+      imagePath = await compressAndSaveImage(req.file.buffer);
     }
+
+    const oldImage = req.user.image;
 
     if (fullName) req.user.fullName = fullName;
     if (email) req.user.email = email;
     if (imagePath) req.user.image = imagePath;
 
     await req.user.save();
+
+     if (imagePath) {
+      await deleteByUrl(oldImage);
+    }
 
     res.status(200).json({
       message: "Profile updated successfully",

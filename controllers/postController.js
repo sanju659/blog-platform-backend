@@ -4,6 +4,7 @@ const path = require("path");
 const mongoose = require("mongoose");
 const os = require("os");
 const videoQueue = require("../queues/videoQueue");
+const { deleteByUrl } = require("../utils/storage");
 const {
   compressAndSaveImage,
   // compressAndSaveVideo,
@@ -45,10 +46,10 @@ const buildVideoPlaceholder = () => ({
 const processImageFiles = async (files) => {
   return Promise.all(
     files.map(async (file) => {
-      const filename = await compressAndSaveImage(file.buffer);
+      const url = await compressAndSaveImage(file.buffer);
       return {
         type: "image",
-        url: `${process.env.BASE_URL}/uploads/${filename}`,
+        url,
         status: "ready",
       };
     }),
@@ -251,18 +252,7 @@ exports.updatePost = async (req, res) => {
       const removedMedia = updatedMedia.filter(
         (m) => m.url && !keepUrls.includes(m.url),
       );
-      removedMedia.forEach((m) => {
-        if (m.url && m.url.includes("uploads/")) {
-          const filePath = path.join(
-            __dirname,
-            "..",
-            m.url.replace(`${process.env.BASE_URL}/`, ""),
-          );
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      });
+      await Promise.all(removedMedia.map((m) => deleteByUrl(m.url)));
 
       updatedMedia = keepMedia;
     }
@@ -338,18 +328,7 @@ exports.deletePost = async (req, res) => {
     // Delete all image files
     // Delete all media files (images + videos)
     if (post.media && post.media.length > 0) {
-      post.media.forEach((m) => {
-        if (m.url && m.url.includes("uploads/")) {
-          const filePath = path.join(
-            __dirname,
-            "..",
-            m.url.replace(`${process.env.BASE_URL}/`, ""),
-          );
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      });
+      await Promise.all(post.media.map((m) => deleteByUrl(m.url)));
     }
 
     await post.deleteOne();

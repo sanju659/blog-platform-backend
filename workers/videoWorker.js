@@ -40,7 +40,7 @@ const worker = new Worker(
       ).catch(() => {});
     };
 
-    const filename = await compressAndSaveVideo(buffer, onProgress);
+    const videoUrl = await compressAndSaveVideo(buffer, onProgress);
 
     fs.unlink(tempPath, () => {});
 
@@ -48,14 +48,14 @@ const worker = new Worker(
       { _id: postId, "media._id": mediaId },
       {
         $set: {
-          "media.$.url": `${process.env.BASE_URL}/uploads/${filename}`,
+          "media.$.url": videoUrl,
           "media.$.status": "ready",
           "media.$.progress": null,
         },
       },
     );
 
-    return { filename };
+    return { videoUrl };
   },
   {
     connection,
