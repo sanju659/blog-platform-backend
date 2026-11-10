@@ -1,14 +1,14 @@
 const Post = require("./../models/Post");
-const fs = require("fs");
-const path = require("path");
 const mongoose = require("mongoose");
-const os = require("os");
 const videoQueue = require("../queues/videoQueue");
-const { deleteByUrl } = require("../utils/storage");
+
 const {
-  compressAndSaveImage,
-  // compressAndSaveVideo,
-} = require("../utils/imageProcessor");
+  deleteByUrl,
+  uploadTempBuffer,
+  deleteByKey,
+} = require("../utils/storage");
+
+const { compressAndSaveImage } = require("../utils/imageProcessor");
 
 // Processes uploaded files (images + videos) into { type, url } media objects
 // const processMediaFiles = async (files) => {
@@ -58,18 +58,41 @@ const processImageFiles = async (files) => {
 
 // Writes the video buffer to a temp file and enqueues a compression job.
 // Passing a file path (not the raw buffer) keeps Redis job payloads small.
-const enqueueVideoJob = async (postId, mediaId, buffer) => {
-  const tempPath = path.join(
-    os.tmpdir(),
-    `${Date.now()}-${Math.round(Math.random() * 1e9)}-input.tmp`,
-  );
-  fs.writeFileSync(tempPath, buffer);
+const markVideoFailed = (postId, mediaId) =>
+  Post.updateOne(
+    { _id: postId, "media._id": mediaId },
+    {
+      $set: {
+        "media.$.status": "failed",
+        "media.$.error": "Video processing failed",
+        "media.$.progress": null,
+      },
+    },
+  ).catch(() => {});
 
-  await videoQueue.add("compress-video", {
-    postId: postId.toString(),
-    mediaId: mediaId.toString(),
-    tempPath,
-  });
+// Uploads raw video to private S3 storage and enqueues compression job.
+const enqueueVideoJob = async (postId, mediaId, buffer, mimetype) => {
+  const rawKey = `tmp/raw/${Date.now()}-${Math.round(Math.random() * 1e9)}.tmp`;
+
+  try {
+    // 1. Upload raw video to private S3 storage
+    await uploadTempBuffer(buffer, rawKey, mimetype);
+
+    // 2. Enqueue job with S3 key instead of local file path
+    await videoQueue.add("compress-video", {
+      postId: postId.toString(),
+      mediaId: mediaId.toString(),
+      rawKey,
+    });
+  } catch (err) {
+    console.error("Failed to enqueue video job:", err.message);
+
+    // 3. Clean up raw S3 object if upload succeeded
+    await deleteByKey(rawKey);
+
+    // 4. Mark media as failed
+    await markVideoFailed(postId, mediaId);
+  }
 };
 
 // Create a new post
@@ -110,8 +133,14 @@ exports.createPost = async (req, res) => {
     // Enqueue background compression jobs for each video that made it into the final media array
     videoFiles.forEach((file, idx) => {
       const placeholder = videoPlaceholders[idx];
+
       if (userpost.media.id(placeholder._id)) {
-        enqueueVideoJob(userpost._id, placeholder._id, file.buffer);
+        enqueueVideoJob(
+          userpost._id,
+          placeholder._id,
+          file.buffer,
+          file.mimetype,
+        ).catch(console.error);
       }
     });
   } catch (error) {
@@ -291,8 +320,14 @@ exports.updatePost = async (req, res) => {
 
     videoFiles.forEach((file, idx) => {
       const placeholder = videoPlaceholders[idx];
+
       if (updatedPost.media.id(placeholder._id)) {
-        enqueueVideoJob(updatedPost._id, placeholder._id, file.buffer);
+        enqueueVideoJob(
+          updatedPost._id,
+          placeholder._id,
+          file.buffer,
+          file.mimetype,
+        ).catch(console.error);
       }
     });
   } catch (error) {

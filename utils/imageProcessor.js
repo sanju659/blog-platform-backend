@@ -28,20 +28,18 @@ const compressAndSaveImage = async (buffer) => {
   );
 };
 
-// Compresses a video with ffmpeg, uploads the result to S3. Returns the public URL.
+// Compresses a video file with ffmpeg, uploads the result to S3. Returns the public URL.
+// inputPath is owned by the caller (this function does not delete it).
 // Calls onProgress(percent) as ffmpeg reports progress.
-const compressAndSaveVideo = (buffer, onProgress) => {
+const compressAndSaveVideo = (inputPath, onProgress) => {
   return new Promise((resolve, reject) => {
     const name = uniqueName();
-    const tempInputPath = path.join(os.tmpdir(), `${name}-input.tmp`);
     const tempOutputPath = path.join(os.tmpdir(), `${name}-output.mp4`);
-
-    fs.writeFileSync(tempInputPath, buffer);
 
     const args = [
       "-y",
       "-i",
-      tempInputPath,
+      inputPath,
       "-c:v",
       "libx264",
       "-crf",
@@ -104,14 +102,11 @@ const compressAndSaveVideo = (buffer, onProgress) => {
     });
 
     ffmpegProcess.on("error", (err) => {
-      fs.unlink(tempInputPath, () => {});
       fs.unlink(tempOutputPath, () => {});
       reject(err);
     });
 
     ffmpegProcess.on("close", async (code) => {
-      fs.unlink(tempInputPath, () => {});
-
       if (code !== 0) {
         fs.unlink(tempOutputPath, () => {});
         return reject(

@@ -37,21 +37,21 @@ const validateCreatePost = [
   body("content").notEmpty().withMessage("Content is required"),
 
   body("excerpt")
-    .optional()
+    .optional({ values: "falsy" })
     .trim()
     .isLength({ max: 300 })
     .withMessage("Excerpt cannot exceed 300 characters"),
 
   body("category")
-    .optional()
+    .optional({ values: "falsy" })
     .isIn(validCategories)
     .withMessage(`Category must be one of: ${validCategories.join(", ")}`),
 
   body("published")
-  .optional()
-  .isBoolean()
-  .withMessage("Published must be true or false")
-  .toBoolean(),
+    .optional()
+    .isBoolean()
+    .withMessage("Published must be true or false")
+    .toBoolean(),
 
   handleValidationErrors,
 ];
@@ -71,21 +71,21 @@ const validateUpdatePost = [
   body("content").optional().notEmpty().withMessage("Content cannot be empty"),
 
   body("excerpt")
-    .optional()
+    .optional({ values: "falsy" })
     .trim()
     .isLength({ max: 300 })
     .withMessage("Excerpt cannot exceed 300 characters"),
 
   body("category")
-    .optional()
+    .optional({ values: "falsy" })
     .isIn(validCategories)
     .withMessage(`Category must be one of: ${validCategories.join(", ")}`),
 
   body("published")
-  .optional()
-  .isBoolean()
-  .withMessage("Published must be true or false")
-  .toBoolean(),
+    .optional()
+    .isBoolean()
+    .withMessage("Published must be true or false")
+    .toBoolean(),
 
   handleValidationErrors,
 ];
