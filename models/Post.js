@@ -38,6 +38,10 @@ const postSchema = new mongoose.Schema(
             enum: ["ready", "processing", "failed"],
             default: "ready",
           },
+          progress: {
+            type: Number,
+            default: null, // 0-99 while processing, null otherwise
+          },
           error: {
             type: String,
             default: null,
@@ -108,10 +112,6 @@ const postSchema = new mongoose.Schema(
     deletionReason: {
       type: String,
       enum: ["spam", "abuse", "illegal", "violation", "other"],
-      default: null,
-    },
-    progress: {
-      type: Number,
       default: null,
     },
   },

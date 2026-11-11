@@ -266,24 +266,41 @@ exports.updatePost = async (req, res) => {
     if (excerpt) post.excerpt = excerpt;
     if (category) post.category = category;
 
-    let updatedMedia = post.media || [];
+    // Start from the post's REAL media (from the DB), never from client data
+    let updatedMedia = post.media.map((m) => m.toObject());
+    let removedMedia = [];
 
     if (existingMedia !== undefined) {
-      let keepMedia = [];
+      let clientMedia;
       try {
-        keepMedia = JSON.parse(existingMedia);
+        clientMedia = JSON.parse(existingMedia);
       } catch (e) {
-        keepMedia = updatedMedia;
+        return res
+          .status(400)
+          .json({ message: "Invalid existingMedia format" });
       }
 
-      const keepUrls = keepMedia.map((m) => m.url).filter(Boolean);
+      if (!Array.isArray(clientMedia)) {
+        return res
+          .status(400)
+          .json({ message: "existingMedia must be an array" });
+      }
 
-      const removedMedia = updatedMedia.filter(
-        (m) => m.url && !keepUrls.includes(m.url),
+      // The client only tells us WHICH existing items to keep (by _id or url).
+      // We never copy objects from the client.
+      const keepIds = new Set(
+        clientMedia
+          .map((m) => m?._id)
+          .filter(Boolean)
+          .map(String),
       );
-      await Promise.all(removedMedia.map((m) => deleteByUrl(m.url)));
+      const keepUrls = new Set(clientMedia.map((m) => m?.url).filter(Boolean));
 
-      updatedMedia = keepMedia;
+      const isKept = (m) =>
+        keepIds.has(String(m._id)) || (m.url && keepUrls.has(m.url));
+
+      removedMedia = updatedMedia.filter((m) => !isKept(m));
+      updatedMedia = updatedMedia.filter(isKept);
     }
 
     const files = req.files || [];
@@ -312,6 +329,9 @@ exports.updatePost = async (req, res) => {
     }
 
     const updatedPost = await post.save();
+
+    // Delete removed files only AFTER the DB save succeeded
+    await Promise.all(removedMedia.map((m) => deleteByUrl(m.url)));
 
     res.status(200).json({
       message: "Post updated successfully",
