@@ -43,17 +43,33 @@ const buildVideoPlaceholder = () => ({
   status: "processing",
 });
 
+const MAX_MEDIA = 10;
+
+// Uploads all images. If any upload fails, deletes the ones that already
+// succeeded (no orphans) and throws a 400-style error.
 const processImageFiles = async (files) => {
-  return Promise.all(
-    files.map(async (file) => {
-      const url = await compressAndSaveImage(file.buffer);
-      return {
-        type: "image",
-        url,
-        status: "ready",
-      };
-    }),
+  const results = await Promise.allSettled(
+    files.map(async (file) => ({
+      type: "image",
+      url: await compressAndSaveImage(file.buffer),
+      status: "ready",
+    })),
   );
+
+  const uploaded = results
+    .filter((r) => r.status === "fulfilled")
+    .map((r) => r.value);
+  const failed = results.find((r) => r.status === "rejected");
+
+  if (failed) {
+    console.error("Image processing failed:", failed.reason?.message);
+    await Promise.all(uploaded.map((m) => deleteByUrl(m.url)));
+    throw Object.assign(new Error("One of the images could not be processed"), {
+      status: 400,
+    });
+  }
+
+  return uploaded;
 };
 
 // Writes the video buffer to a temp file and enqueues a compression job.
@@ -97,23 +113,30 @@ const enqueueVideoJob = async (postId, mediaId, buffer, mimetype) => {
 
 // Create a new post
 exports.createPost = async (req, res) => {
+  let imageMedia = [];
+  let userpost = null;
+
   try {
     const { title, content, excerpt, category, published } = req.body;
 
     const files = req.files || [];
+    if (files.length > MAX_MEDIA) {
+      return res.status(400).json({
+        message: `You can upload a maximum of ${MAX_MEDIA} media items`,
+      });
+    }
+
     const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
     const videoFiles = files.filter((f) => f.mimetype.startsWith("video/"));
 
-    const imageMedia = await processImageFiles(imageFiles);
+    imageMedia = await processImageFiles(imageFiles);
     const videoPlaceholders = videoFiles.map(() => buildVideoPlaceholder());
-
-    const media = [...imageMedia, ...videoPlaceholders].slice(0, 5);
 
     const postData = {
       title,
       content,
       excerpt,
-      media,
+      media: [...imageMedia, ...videoPlaceholders],
       category,
       published: published === "true" || published === true,
       author: req.user._id,
@@ -123,31 +146,34 @@ exports.createPost = async (req, res) => {
       postData.publishedAt = new Date();
     }
 
-    const userpost = await Post.create(postData);
+    userpost = await Post.create(postData);
 
     res.status(201).json({
       message: "Post created successfully",
       userpost,
     });
 
-    // Enqueue background compression jobs for each video that made it into the final media array
     videoFiles.forEach((file, idx) => {
-      const placeholder = videoPlaceholders[idx];
-
-      if (userpost.media.id(placeholder._id)) {
-        enqueueVideoJob(
-          userpost._id,
-          placeholder._id,
-          file.buffer,
-          file.mimetype,
-        ).catch(console.error);
-      }
+      enqueueVideoJob(
+        userpost._id,
+        videoPlaceholders[idx]._id,
+        file.buffer,
+        file.mimetype,
+      ).catch(console.error);
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: "Server error",
-    });
+
+    // Post was never saved -> remove the images uploaded for it
+    if (!userpost) {
+      await Promise.all(imageMedia.map((m) => deleteByUrl(m.url)));
+    }
+
+    if (!res.headersSent) {
+      res.status(error.status || 500).json({
+        message: error.status ? error.message : "Server error",
+      });
+    }
   }
 };
 
@@ -239,26 +265,24 @@ exports.getMyPosts = async (req, res) => {
 
 // Update post (author only)
 exports.updatePost = async (req, res) => {
+  let imageMedia = [];
+  let updatedPost = null;
+
   try {
     const { id } = req.params;
     const { title, content, excerpt, category, published, existingMedia } =
       req.body;
 
-    const post = await Post.findOne({
-      _id: id,
-      isDeleted: false,
-    });
+    const post = await Post.findOne({ _id: id, isDeleted: false });
 
     if (!post) {
-      return res.status(404).json({
-        message: "Post not found",
-      });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     if (post.author.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        message: "You are not allowed to update this post",
-      });
+      return res
+        .status(403)
+        .json({ message: "You are not allowed to update this post" });
     }
 
     if (title) post.title = title;
@@ -267,7 +291,7 @@ exports.updatePost = async (req, res) => {
     if (category) post.category = category;
 
     // Start from the post's REAL media (from the DB), never from client data
-    let updatedMedia = post.media.map((m) => m.toObject());
+    let keptMedia = post.media.map((m) => m.toObject());
     let removedMedia = [];
 
     if (existingMedia !== undefined) {
@@ -286,8 +310,6 @@ exports.updatePost = async (req, res) => {
           .json({ message: "existingMedia must be an array" });
       }
 
-      // The client only tells us WHICH existing items to keep (by _id or url).
-      // We never copy objects from the client.
       const keepIds = new Set(
         clientMedia
           .map((m) => m?._id)
@@ -299,22 +321,26 @@ exports.updatePost = async (req, res) => {
       const isKept = (m) =>
         keepIds.has(String(m._id)) || (m.url && keepUrls.has(m.url));
 
-      removedMedia = updatedMedia.filter((m) => !isKept(m));
-      updatedMedia = updatedMedia.filter(isKept);
+      removedMedia = keptMedia.filter((m) => !isKept(m));
+      keptMedia = keptMedia.filter(isKept);
     }
 
     const files = req.files || [];
+
+    // Enforce the limit BEFORE uploading anything
+    if (keptMedia.length + files.length > MAX_MEDIA) {
+      return res.status(400).json({
+        message: `A post can have at most ${MAX_MEDIA} media items`,
+      });
+    }
+
     const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
     const videoFiles = files.filter((f) => f.mimetype.startsWith("video/"));
 
-    const imageMedia = await processImageFiles(imageFiles);
+    imageMedia = await processImageFiles(imageFiles);
     const videoPlaceholders = videoFiles.map(() => buildVideoPlaceholder());
 
-    updatedMedia = [...updatedMedia, ...imageMedia, ...videoPlaceholders].slice(
-      0,
-      5,
-    );
-    post.media = updatedMedia;
+    post.media = [...keptMedia, ...imageMedia, ...videoPlaceholders];
 
     if (published !== undefined) {
       const isPublished = published === "true" || published === true;
@@ -328,7 +354,7 @@ exports.updatePost = async (req, res) => {
       post.published = isPublished;
     }
 
-    const updatedPost = await post.save();
+    updatedPost = await post.save();
 
     // Delete removed files only AFTER the DB save succeeded
     await Promise.all(removedMedia.map((m) => deleteByUrl(m.url)));
@@ -339,22 +365,26 @@ exports.updatePost = async (req, res) => {
     });
 
     videoFiles.forEach((file, idx) => {
-      const placeholder = videoPlaceholders[idx];
-
-      if (updatedPost.media.id(placeholder._id)) {
-        enqueueVideoJob(
-          updatedPost._id,
-          placeholder._id,
-          file.buffer,
-          file.mimetype,
-        ).catch(console.error);
-      }
+      enqueueVideoJob(
+        updatedPost._id,
+        videoPlaceholders[idx]._id,
+        file.buffer,
+        file.mimetype,
+      ).catch(console.error);
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: "Server error",
-    });
+
+    // Save failed -> remove the images uploaded during this request
+    if (!updatedPost) {
+      await Promise.all(imageMedia.map((m) => deleteByUrl(m.url)));
+    }
+
+    if (!res.headersSent) {
+      res.status(error.status || 500).json({
+        message: error.status ? error.message : "Server error",
+      });
+    }
   }
 };
 

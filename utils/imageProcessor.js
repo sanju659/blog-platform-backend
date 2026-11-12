@@ -8,23 +8,29 @@ const { uploadBuffer, uploadFile } = require("./storage");
 
 const uniqueName = () => Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-// Compresses an image and uploads it to S3. Returns the public URL.
+// Compresses an image to WebP (keeps transparency and GIF/WebP animation)
+// and uploads it to S3. Returns the public URL.
 const compressAndSaveImage = async (buffer) => {
-  const compressed = await sharp(buffer)
-    .rotate()
+  const { pages } = await sharp(buffer).metadata();
+  const animated = pages > 1;
+
+  let pipeline = sharp(buffer, { animated });
+  if (!animated) pipeline = pipeline.rotate(); // auto-orient photos via EXIF
+
+  const compressed = await pipeline
     .resize({
       width: 1920,
       height: 1920,
       fit: "inside",
       withoutEnlargement: true,
     })
-    .jpeg({ quality: 75, mozjpeg: true })
+    .webp({ quality: 80 })
     .toBuffer();
 
   return uploadBuffer(
     compressed,
-    `uploads/images/${uniqueName()}.jpeg`,
-    "image/jpeg",
+    `uploads/images/${uniqueName()}.webp`,
+    "image/webp",
   );
 };
 
