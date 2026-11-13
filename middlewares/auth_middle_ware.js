@@ -35,6 +35,18 @@ const protect = async (req, res, next) => {
         });
       }
 
+      // Reject tokens issued before the last password reset
+      if (req.user.passwordChangedAt) {
+        const changedAtSeconds = Math.floor(
+          req.user.passwordChangedAt.getTime() / 1000,
+        );
+        if (decoded.iat < changedAtSeconds) {
+          return res.status(401).json({
+            message: "Password was changed recently. Please log in again.",
+          });
+        }
+      }
+
       // Check if user is suspended or banned
       if (req.user.status === "suspended") {
         return res.status(403).json({

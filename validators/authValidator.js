@@ -1,4 +1,4 @@
-const { body, validationResult } = require("express-validator");
+const { body, param, validationResult } = require("express-validator");
 
 // Middleware to handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -88,9 +88,40 @@ const validateChangePassword = [
   handleValidationErrors,
 ];
 
+// Forgot password validation
+const validateForgotPassword = [
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Please provide a valid email")
+    .toLowerCase(),
+
+  handleValidationErrors,
+];
+
+// Reset password validation
+const validateResetPassword = [
+  param("token")
+    .isHexadecimal()
+    .isLength({ min: 64, max: 64 })
+    .withMessage("Invalid or expired reset link"),
+
+  body("newPassword")
+    .notEmpty()
+    .withMessage("New password is required")
+    .isLength({ min: 5 })
+    .withMessage("New password must be at least 5 characters"),
+
+  handleValidationErrors,
+];
+
 module.exports = {
   validateSignup,
   validateLogin,
   validateUpdateProfile,
   validateChangePassword,
+  validateForgotPassword,
+  validateResetPassword,
 };

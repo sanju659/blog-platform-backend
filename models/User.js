@@ -43,6 +43,22 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Password reset (token is stored hashed, never in plain text)
+    passwordResetToken: {
+      type: String,
+      default: null,
+      select: false, // never returned by queries unless explicitly requested
+    },
+    passwordResetExpires: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    // Used to invalidate JWTs issued before the last password reset
+    passwordChangedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

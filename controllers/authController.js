@@ -3,6 +3,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { compressAndSaveImage } = require("../utils/imageProcessor");
 const { deleteByUrl } = require("../utils/storage");
+const crypto = require("crypto");
+const { sendPasswordResetEmail } = require("../utils/sendEmail");
 
 // Sign Up
 exports.signup = async (req, res) => {
@@ -152,7 +154,7 @@ exports.updateProfile = async (req, res) => {
 
     await req.user.save();
 
-     if (imagePath) {
+    if (imagePath) {
       await deleteByUrl(oldImage);
     }
 
@@ -205,5 +207,123 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({
       message: "Server error",
     });
+  }
+};
+
+const RESET_TOKEN_TTL_MINUTES = 15;
+const RESET_COOLDOWN_MS = 60 * 1000;
+
+// Forgot Password
+exports.forgotPassword = async (req, res) => {
+  // Same response for every outcome, so the API never reveals which emails exist
+  const genericResponse = {
+    message:
+      "If an account with that email exists, a password reset link has been sent.",
+  };
+
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email }).select("+passwordResetExpires");
+
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Cooldown: skip if a reset email was issued in the last 60 seconds
+    if (user.passwordResetExpires) {
+      const issuedAt =
+        user.passwordResetExpires.getTime() -
+        RESET_TOKEN_TTL_MINUTES * 60 * 1000;
+      if (Date.now() - issuedAt < RESET_COOLDOWN_MS) {
+        return res.status(200).json(genericResponse);
+      }
+    }
+
+    // Plain token goes in the email; only its hash is stored
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          passwordResetToken: hashedToken,
+          passwordResetExpires: new Date(
+            Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000,
+          ),
+        },
+      },
+    );
+
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    // Respond first, then send in the background (keeps timing identical)
+    res.status(200).json(genericResponse);
+
+    sendPasswordResetEmail({
+      to: user.email,
+      name: user.fullName,
+      resetUrl,
+      expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+    }).catch(async (err) => {
+      console.error("Failed to send reset email:", err.message);
+      // Email never went out, so the token is useless: remove it
+      await User.updateOne(
+        { _id: user._id },
+        { $set: { passwordResetToken: null, passwordResetExpires: null } },
+      ).catch(() => {});
+    });
+  } catch (error) {
+    console.error(error);
+    if (!res.headersSent) {
+      // Still generic: don't leak internal state
+      res.status(200).json(genericResponse);
+    }
+  }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Atomic: find a valid, unexpired token AND consume it in one operation
+    const user = await User.findOneAndUpdate(
+      {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: { $gt: new Date() },
+      },
+      {
+        $set: {
+          password: hashedPassword,
+          passwordChangedAt: new Date(), // invalidates all older JWTs
+          passwordResetToken: null,
+          passwordResetExpires: null,
+        },
+      },
+    );
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid or expired reset link",
+      });
+    }
+
+    res.status(200).json({
+      message: "Password changed successfully. Please log in.",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };
