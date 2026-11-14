@@ -8,6 +8,7 @@ const {
   changePassword,
   forgotPassword,
   resetPassword,
+  checkUsername,
 } = require("../controllers/authController");
 const protect = require("../middlewares/auth_middle_ware");
 const {
@@ -28,6 +29,7 @@ const {
   resetPasswordLimiter,
   signupLimiter,
   changePasswordLimiter,
+  usernameCheckLimiter,
 } = require("../middlewares/rateLimiter");
 
 const router = express.Router();
@@ -51,6 +53,12 @@ router.post(
   resetPasswordLimiter,
   validateResetPassword,
   resetPassword,
+);
+
+router.get(
+  "/username-available/:username",
+  usernameCheckLimiter,
+  checkUsername,
 );
 
 // Was public and returned every user. Now admin-only.

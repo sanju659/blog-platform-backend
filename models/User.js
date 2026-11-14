@@ -6,6 +6,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    username: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      minlength: 3,
+      maxlength: 20,
+    },
     email: {
       type: String,
       required: true,
@@ -61,6 +68,12 @@ const userSchema = new mongoose.Schema(
     },
   },
   { timestamps: true },
+);
+
+// Unique only for users that actually have a username (old users have none yet)
+userSchema.index(
+  { username: 1 },
+  { unique: true, partialFilterExpression: { username: { $type: "string" } } },
 );
 
 module.exports = mongoose.model("User", userSchema);

@@ -60,6 +60,13 @@ const changePasswordLimiter = build({
   message: "Too many attempts. Please try again later.",
 });
 
+// Username availability check: 30 / min per IP (the signup form checks while typing)
+const usernameCheckLimiter = build({
+  windowMs: minutes(1),
+  limit: 30,
+  message: "Too many checks. Please slow down.",
+});
+
 module.exports = {
   loginIpLimiter,
   loginAccountLimiter,
@@ -67,4 +74,5 @@ module.exports = {
   resetPasswordLimiter,
   signupLimiter,
   changePasswordLimiter,
+  usernameCheckLimiter,
 };

@@ -1,4 +1,5 @@
 const { body, param, validationResult } = require("express-validator");
+const { getUsernameError } = require("../utils/username");
 
 // Middleware to handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -23,6 +24,17 @@ const validateSignup = [
     .withMessage("Full name is required")
     .isLength({ min: 2, max: 50 })
     .withMessage("Full name must be between 2 and 50 characters"),
+  body("username")
+    .trim()
+    .toLowerCase()
+    .notEmpty()
+    .withMessage("Username is required")
+    .bail()
+    .custom((value) => {
+      const error = getUsernameError(value);
+      if (error) throw new Error(error);
+      return true;
+    }),
   body("email")
     .trim()
     .notEmpty()

@@ -5,27 +5,29 @@ const { compressAndSaveImage } = require("../utils/imageProcessor");
 const { deleteByUrl } = require("../utils/storage");
 const crypto = require("crypto");
 const { sendPasswordResetEmail } = require("../utils/sendEmail");
+const { normalizeUsername, getUsernameError } = require("../utils/username");
 
+// Sign Up
 // Sign Up
 exports.signup = async (req, res) => {
   try {
-    const { fullName, email, password, image } = req.body;
+    const { fullName, username, email, password, image } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({
-        message: "User already exists",
-      });
+      return res.status(409).json({ message: "User already exists" });
     }
 
-    // Hash password
+    if (await User.exists({ username })) {
+      return res.status(409).json({ message: "Username is already taken" });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create user
     const user = await User.create({
       fullName,
+      username,
       email,
       password: hashedPassword,
       image,
@@ -36,15 +38,24 @@ exports.signup = async (req, res) => {
       user: {
         id: user._id,
         fullName: user.fullName,
+        username: user.username,
         email: user.email,
         image: user.image,
       },
     });
   } catch (error) {
+    // Two signups racing for the same email/username: the DB index catches it
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(409).json({
+        message:
+          field === "username"
+            ? "Username is already taken"
+            : "User already exists",
+      });
+    }
     console.error(error);
-    res.status(500).json({
-      message: "Server error",
-    });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -87,6 +98,7 @@ exports.login = async (req, res) => {
       user: {
         id: user._id,
         fullName: user.fullName,
+        username: user.username,
         email: user.email,
         image: user.image,
         role: user.role,
@@ -163,6 +175,7 @@ exports.updateProfile = async (req, res) => {
       user: {
         id: req.user._id,
         fullName: req.user.fullName,
+        username: req.user.username, //,
         email: req.user.email,
         image: req.user.image,
         role: req.user.role,
@@ -170,10 +183,21 @@ exports.updateProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "Server error",
-    });
+    // Email grabbed by another account between the check and the save
+    if (error.code === 11000) {
+      return res.status(409).json({ message: "Email is already taken" });
+    }
+
+    // Schema validation problem on the user document
+    if (error.name === "ValidationError") {
+      const first = Object.values(error.errors)[0];
+      return res
+        .status(400)
+        .json({ message: first?.message || "Invalid data" });
+    }
+
+    console.error("updateProfile failed:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -324,6 +348,26 @@ exports.resetPassword = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Username availability (used for live checking on the signup form)
+exports.checkUsername = async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username);
+
+    const formatError = getUsernameError(username);
+    if (formatError) {
+      return res.status(200).json({ available: false, reason: formatError });
+    }
+
+    const taken = await User.exists({ username });
+    res.status(200).json({
+      available: !taken,
+      reason: taken ? "Username is already taken" : null,
+    });
+  } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 };
