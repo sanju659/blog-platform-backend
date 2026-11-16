@@ -124,5 +124,6 @@ const postSchema = new mongoose.Schema(
 postSchema.index({ published: 1, createdAt: -1 });
 postSchema.index({ author: 1 });
 postSchema.index({ isDeleted: 1 });
+postSchema.index({ author: 1, published: 1, isDeleted: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Post", postSchema);

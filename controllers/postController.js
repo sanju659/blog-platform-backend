@@ -184,7 +184,7 @@ exports.getAllPosts = async (req, res) => {
       published: true,
       isDeleted: false, // Only show non-deleted posts
     })
-      .populate("author", "fullName image")
+      .populate("author", "fullName username image")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -204,7 +204,10 @@ exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findById(id).populate("author", "fullName image");
+    const post = await Post.findById(id).populate(
+      "author",
+      "fullName username image",
+    );
 
     if (!post) {
       return res.status(404).json({
