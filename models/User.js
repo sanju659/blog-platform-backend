@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema(
       maxlength: 200,
       default: "",
     },
+    // When the username was last changed (null = never changed, so the first change is free)
+    usernameChangedAt: {
+      type: Date,
+      default: null,
+    },
     email: {
       type: String,
       required: true,

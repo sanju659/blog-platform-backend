@@ -72,10 +72,24 @@ const getUsernameError = (username) => {
   return null;
 };
 
+const USERNAME_CHANGE_COOLDOWN_DAYS = 30;
+
+// Returns the Date until which the username is locked, or null if it can be changed now
+const getUsernameLockedUntil = (changedAt) => {
+  if (!changedAt) return null;
+  const until = new Date(
+    new Date(changedAt).getTime() +
+      USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+  );
+  return until > new Date() ? until : null;
+};
+
 module.exports = {
   USERNAME_MIN,
   USERNAME_MAX,
+  USERNAME_CHANGE_COOLDOWN_DAYS,
   RESERVED_USERNAMES,
   normalizeUsername,
   getUsernameError,
+  getUsernameLockedUntil,
 };

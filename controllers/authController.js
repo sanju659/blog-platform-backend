@@ -5,7 +5,12 @@ const { compressAndSaveImage } = require("../utils/imageProcessor");
 const { deleteByUrl } = require("../utils/storage");
 const crypto = require("crypto");
 const { sendPasswordResetEmail } = require("../utils/sendEmail");
-const { normalizeUsername, getUsernameError } = require("../utils/username");
+const {
+  normalizeUsername,
+  getUsernameError,
+  getUsernameLockedUntil,
+} = require("../utils/username");
+const formatUser = require("../utils/formatUser");
 
 // Sign Up
 // Sign Up
@@ -95,15 +100,7 @@ exports.login = async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       token: token,
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        username: user.username,
-        email: user.email,
-        image: user.image,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -127,18 +124,19 @@ exports.getAllUsers = async (req, res) => {
 // Get logged-in user
 exports.getMe = async (req, res) => {
   if (!req.user) {
-    return res.status(401).json({
-      message: "Not authorized",
-    });
+    return res.status(401).json({ message: "Not authorized" });
   }
 
-  res.status(200).json(req.user);
+  res.status(200).json(formatUser(req.user));
 };
 
 // Update Profile
 exports.updateProfile = async (req, res) => {
+  let newImageUrl = null;
+  let saved = false;
+
   try {
-    const { fullName, email } = req.body;
+    const { fullName, email, bio, username } = req.body;
 
     if (email) {
       const existingUser = await User.findOne({
@@ -146,49 +144,76 @@ exports.updateProfile = async (req, res) => {
         _id: { $ne: req.user._id },
       });
       if (existingUser) {
-        return res.status(409).json({
-          message: "Email is already taken",
-        });
+        return res.status(409).json({ message: "Email is already taken" });
       }
     }
 
-    // Compress and save the uploaded profile image (if provided)
-    let imagePath = null;
+    // Username change rules (all checks happen BEFORE any image is uploaded)
+    let usernameChanged = false;
+    if (username !== undefined && username !== req.user.username) {
+      const lockedUntil = req.user.username
+        ? getUsernameLockedUntil(req.user.usernameChangedAt)
+        : null;
+
+      if (lockedUntil) {
+        const daysLeft = Math.ceil(
+          (lockedUntil.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+        );
+        return res.status(400).json({
+          message: `You can change your username again in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+          usernameLockedUntil: lockedUntil,
+        });
+      }
+
+      if (await User.exists({ username, _id: { $ne: req.user._id } })) {
+        return res.status(409).json({ message: "Username is already taken" });
+      }
+
+      usernameChanged = true;
+    }
+
+    // Compress and upload the new avatar (if provided)
     if (req.file) {
-      imagePath = await compressAndSaveImage(req.file.buffer);
+      newImageUrl = await compressAndSaveImage(req.file.buffer);
     }
 
     const oldImage = req.user.image;
 
     if (fullName) req.user.fullName = fullName;
     if (email) req.user.email = email;
-    if (imagePath) req.user.image = imagePath;
+    if (bio !== undefined) req.user.bio = bio; // empty string clears the bio
+    if (usernameChanged) {
+      // Setting a username for the first time doesn't start the cooldown
+      if (req.user.username) req.user.usernameChangedAt = new Date();
+      req.user.username = username;
+    }
+    if (newImageUrl) req.user.image = newImageUrl;
 
     await req.user.save();
+    saved = true;
 
-    if (imagePath) {
-      await deleteByUrl(oldImage);
-    }
+    // Remove the old avatar only after the save succeeded
+    if (newImageUrl) await deleteByUrl(oldImage);
 
     res.status(200).json({
       message: "Profile updated successfully",
-      user: {
-        id: req.user._id,
-        fullName: req.user.fullName,
-        username: req.user.username, //,
-        email: req.user.email,
-        image: req.user.image,
-        role: req.user.role,
-        createdAt: req.user.createdAt,
-      },
+      user: formatUser(req.user),
     });
   } catch (error) {
-    // Email grabbed by another account between the check and the save
+    // The save failed, so the freshly uploaded avatar is an orphan
+    if (newImageUrl && !saved) await deleteByUrl(newImageUrl);
+
+    // Lost a race for the same email/username: the unique index catches it
     if (error.code === 11000) {
-      return res.status(409).json({ message: "Email is already taken" });
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(409).json({
+        message:
+          field === "username"
+            ? "Username is already taken"
+            : "Email is already taken",
+      });
     }
 
-    // Schema validation problem on the user document
     if (error.name === "ValidationError") {
       const first = Object.values(error.errors)[0];
       return res

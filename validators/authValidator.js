@@ -63,6 +63,7 @@ const validateLogin = [
 ];
 
 // Update profile validation
+// Update profile validation
 const validateUpdateProfile = [
   body("fullName")
     .optional()
@@ -70,11 +71,27 @@ const validateUpdateProfile = [
     .isLength({ min: 2, max: 50 })
     .withMessage("Full name must be between 2 and 50 characters"),
 
+  body("username")
+    .optional()
+    .trim()
+    .toLowerCase()
+    .custom((value) => {
+      const error = getUsernameError(value);
+      if (error) throw new Error(error);
+      return true;
+    }),
+
   body("email")
     .optional()
     .trim()
     .isEmail()
     .withMessage("Please provide a valid email"),
+
+  body("bio")
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage("Bio cannot exceed 200 characters"),
 
   handleValidationErrors,
 ];
