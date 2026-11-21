@@ -67,6 +67,14 @@ const usernameCheckLimiter = build({
   message: "Too many checks. Please slow down.",
 });
 
+// Follow / unfollow: 100 actions / hour per logged-in user (must run after `protect`)
+const followLimiter = build({
+  windowMs: minutes(60),
+  limit: 100,
+  keyGenerator: (req) => String(req.user._id),
+  message: "You're following too fast. Please try again later.",
+});
+
 module.exports = {
   loginIpLimiter,
   loginAccountLimiter,
@@ -75,4 +83,5 @@ module.exports = {
   signupLimiter,
   changePasswordLimiter,
   usernameCheckLimiter,
+  followLimiter,
 };
