@@ -10,6 +10,7 @@ const {
   getFollowers,
   getFollowing,
 } = require("../controllers/userController");
+const blockAdmin = require("../middlewares/blockAdmin");
 
 const router = express.Router();
 
@@ -20,7 +21,19 @@ router.get("/:username/followers", optionalAuth, getFollowers);
 router.get("/:username/following", optionalAuth, getFollowing);
 
 // Logged-in only
-router.post("/:username/follow", protect, followLimiter, followUser);
-router.delete("/:username/follow", protect, followLimiter, unfollowUser);
+router.post(
+  "/:username/follow",
+  protect,
+  blockAdmin,
+  followLimiter,
+  followUser,
+);
+router.delete(
+  "/:username/follow",
+  protect,
+  blockAdmin,
+  followLimiter,
+  unfollowUser,
+);
 
 module.exports = router;

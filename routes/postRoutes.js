@@ -17,6 +17,7 @@ const {
   validateUpdatePost,
   validatePostId,
 } = require("../validators/postValidator");
+const blockAdmin = require("../middlewares/blockAdmin");
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ router.get("/allposts", getAllPosts);
 // Get posts by the user
 router.get("/my-posts", protect, getMyPosts);
 // Following feed (must stay above "/:id")
-router.get("/feed", protect, getFeed);
+router.get("/feed", protect, blockAdmin, getFeed);
 // Get single post by ID (optional auth)
 router.get("/:id", optionalAuth, validatePostId, getPostById);
 // Update post (author only, protected)

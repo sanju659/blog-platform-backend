@@ -12,12 +12,15 @@ const findVisibleUser = async (req) => {
   const username = normalizeUsername(req.params.username);
 
   const user = await User.findOne({ username }).select(
-    "fullName username bio image createdAt status",
+    "fullName username bio image createdAt status role",
   );
   if (!user) return null;
 
-  const isAdmin = req.user?.role === "admin";
-  if (user.status !== "active" && !isAdmin) return null;
+  // Admin accounts have no public profile
+  if (user.role === "admin") return null;
+
+  // Suspended / banned accounts are hidden from everyone
+  if (user.status !== "active") return null;
 
   return user;
 };
@@ -191,7 +194,13 @@ const listConnections = (type) => async (req, res) => {
           foreignField: "_id",
           as: "person",
           pipeline: [
-            { $match: { status: "active", username: { $type: "string" } } },
+            {
+              $match: {
+                status: "active",
+                role: "user",
+                username: { $type: "string" },
+              },
+            },
             { $project: { fullName: 1, username: 1, image: 1, bio: 1 } },
           ],
         },
