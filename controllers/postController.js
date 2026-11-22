@@ -9,6 +9,7 @@ const {
 } = require("../utils/storage");
 
 const { compressAndSaveImage } = require("../utils/imageProcessor");
+const Follow = require("../models/Follow");
 
 // Processes uploaded files (images + videos) into { type, url } media objects
 // const processMediaFiles = async (files) => {
@@ -428,5 +429,100 @@ exports.deletePost = async (req, res) => {
     res.status(500).json({
       message: "Server error",
     });
+  }
+};
+
+// Following feed: published posts from people the user follows (cursor paginated)
+exports.getFeed = async (req, res) => {
+  try {
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 10, 1),
+      30,
+    );
+
+    const followedIds = await Follow.distinct("following", {
+      follower: req.user._id,
+    });
+
+    if (followedIds.length === 0) {
+      return res.status(200).json({
+        posts: [],
+        hasMore: false,
+        nextCursor: null,
+        followingCount: 0,
+      });
+    }
+
+    // Cursor format: "<sortDateMs>_<postId>"
+    let cursorMatch = null;
+    if (req.query.cursor) {
+      const [ms, id] = String(req.query.cursor).split("_");
+      const date = new Date(Number(ms));
+
+      if (isNaN(date.getTime()) || !/^[a-f0-9]{24}$/i.test(id || "")) {
+        return res.status(400).json({ message: "Invalid cursor" });
+      }
+
+      cursorMatch = {
+        $or: [
+          { sortDate: { $lt: date } },
+          { sortDate: date, _id: { $lt: new mongoose.Types.ObjectId(id) } },
+        ],
+      };
+    }
+
+    const rows = await Post.aggregate([
+      {
+        $match: {
+          author: { $in: followedIds },
+          published: true,
+          isDeleted: false,
+        },
+      },
+      // Older posts may lack publishedAt, so fall back to createdAt
+      { $addFields: { sortDate: { $ifNull: ["$publishedAt", "$createdAt"] } } },
+      ...(cursorMatch ? [{ $match: cursorMatch }] : []),
+      { $sort: { sortDate: -1, _id: -1 } },
+      { $limit: limit + 1 }, // one extra row tells us whether there's a next page
+      {
+        $lookup: {
+          from: "users",
+          localField: "author",
+          foreignField: "_id",
+          as: "author",
+          pipeline: [{ $project: { fullName: 1, username: 1, image: 1 } }],
+        },
+      },
+      { $unwind: "$author" },
+      {
+        $project: {
+          title: 1,
+          excerpt: 1,
+          media: 1,
+          category: 1,
+          createdAt: 1,
+          publishedAt: 1,
+          sortDate: 1,
+          author: 1,
+        },
+      },
+    ]);
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+
+    res.status(200).json({
+      posts: page.map(({ sortDate, ...post }) => post),
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? `${new Date(last.sortDate).getTime()}_${last._id}`
+          : null,
+      followingCount: followedIds.length,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };

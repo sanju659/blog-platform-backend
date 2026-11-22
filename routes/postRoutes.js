@@ -6,6 +6,7 @@ const {
   getMyPosts,
   updatePost,
   deletePost,
+  getFeed,
 } = require("./../controllers/postController");
 
 const protect = require("../middlewares/auth_middle_ware");
@@ -31,6 +32,8 @@ router.post(
 router.get("/allposts", getAllPosts);
 // Get posts by the user
 router.get("/my-posts", protect, getMyPosts);
+// Following feed (must stay above "/:id")
+router.get("/feed", protect, getFeed);
 // Get single post by ID (optional auth)
 router.get("/:id", optionalAuth, validatePostId, getPostById);
 // Update post (author only, protected)
