@@ -75,6 +75,14 @@ const followLimiter = build({
   message: "You're following too fast. Please try again later.",
 });
 
+// Reactions: 60 actions / minute per logged-in user (must run after `protect`)
+const reactionLimiter = build({
+  windowMs: minutes(1),
+  limit: 60,
+  keyGenerator: (req) => String(req.user._id),
+  message: "You're reacting too fast. Please slow down.",
+});
+
 module.exports = {
   loginIpLimiter,
   loginAccountLimiter,
@@ -84,4 +92,5 @@ module.exports = {
   changePasswordLimiter,
   usernameCheckLimiter,
   followLimiter,
+  reactionLimiter,
 };

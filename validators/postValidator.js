@@ -97,4 +97,20 @@ const validatePostId = [
   handleValidationErrors,
 ];
 
-module.exports = { validateCreatePost, validateUpdatePost, validatePostId };
+// Set reaction validation
+const validateSetReaction = [
+  param("id").isMongoId().withMessage("Invalid post ID"),
+
+  body("reaction")
+    .isIn(["like", "dislike"])
+    .withMessage("Reaction must be 'like' or 'dislike'"),
+
+  handleValidationErrors,
+];
+
+module.exports = {
+  validateCreatePost,
+  validateUpdatePost,
+  validatePostId,
+  validateSetReaction,
+};

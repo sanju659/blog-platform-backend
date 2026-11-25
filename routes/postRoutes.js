@@ -16,8 +16,15 @@ const {
   validateCreatePost,
   validateUpdatePost,
   validatePostId,
+  validateSetReaction,
 } = require("../validators/postValidator");
 const blockAdmin = require("../middlewares/blockAdmin");
+const { reactionLimiter } = require("../middlewares/rateLimiter");
+const {
+  getReactions,
+  setReaction,
+  removeReaction,
+} = require("../controllers/reactionController");
 
 const router = express.Router();
 
@@ -47,5 +54,24 @@ router.put(
 );
 // Delete post (author only)
 router.delete("/delete/:id", protect, validatePostId, deletePost);
+
+// Reactions (read is public, writes need a normal active user)
+router.get("/:id/reactions", optionalAuth, validatePostId, getReactions);
+router.post(
+  "/:id/reactions",
+  protect,
+  blockAdmin,
+  reactionLimiter,
+  validateSetReaction,
+  setReaction,
+);
+router.delete(
+  "/:id/reactions",
+  protect,
+  blockAdmin,
+  reactionLimiter,
+  validatePostId,
+  removeReaction,
+);
 
 module.exports = router;

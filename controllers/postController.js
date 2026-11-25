@@ -10,6 +10,7 @@ const {
 
 const { compressAndSaveImage } = require("../utils/imageProcessor");
 const Follow = require("../models/Follow");
+const Reaction = require("../models/Reaction");
 
 // Processes uploaded files (images + videos) into { type, url } media objects
 // const processMediaFiles = async (files) => {
@@ -421,6 +422,7 @@ exports.deletePost = async (req, res) => {
     }
 
     await post.deleteOne();
+    await Reaction.deleteMany({ post: post._id });
 
     res.status(200).json({
       message: "Post deleted successfully",
