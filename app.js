@@ -39,12 +39,15 @@ const reportRoutes = require("./routes/reportRoutes");
 
 const userRoutes = require("./routes/userRoutes");
 
+const commentRoutes = require("./routes/commentRoutes");
+
 // Mounting the Route
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/comments", commentRoutes);
 
 // app.get('/', (req, res) => {
 //   res.send('Hello World!')

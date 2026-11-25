@@ -83,6 +83,22 @@ const reactionLimiter = build({
   message: "You're reacting too fast. Please slow down.",
 });
 
+// New comments: 10 / minute per logged-in user (must run after `protect`)
+const commentLimiter = build({
+  windowMs: minutes(1),
+  limit: 10,
+  keyGenerator: (req) => String(req.user._id),
+  message: "You're commenting too fast. Please slow down.",
+});
+
+// Editing / deleting comments: 30 / minute per logged-in user (must run after `protect`)
+const commentEditLimiter = build({
+  windowMs: minutes(1),
+  limit: 30,
+  keyGenerator: (req) => String(req.user._id),
+  message: "You're doing that too fast. Please slow down.",
+});
+
 module.exports = {
   loginIpLimiter,
   loginAccountLimiter,
@@ -93,4 +109,6 @@ module.exports = {
   usernameCheckLimiter,
   followLimiter,
   reactionLimiter,
+  commentLimiter,
+  commentEditLimiter,
 };

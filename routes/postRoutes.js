@@ -26,6 +26,13 @@ const {
   removeReaction,
 } = require("../controllers/reactionController");
 
+const { commentLimiter } = require("../middlewares/rateLimiter");
+const { validateCreateComment } = require("../validators/commentValidator");
+const {
+  getComments,
+  createComment,
+} = require("../controllers/commentController");
+
 const router = express.Router();
 
 // Create post with image upload
@@ -72,6 +79,17 @@ router.delete(
   reactionLimiter,
   validatePostId,
   removeReaction,
+);
+
+// Comments (read is public, writing needs a normal active user)
+router.get("/:id/comments", optionalAuth, validatePostId, getComments);
+router.post(
+  "/:id/comments",
+  protect,
+  blockAdmin,
+  commentLimiter,
+  validateCreateComment,
+  createComment,
 );
 
 module.exports = router;
